@@ -212,6 +212,18 @@ pub enum Theme {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScriptConfig {
+    pub id: String,
+    pub name: String,
+    /// 実行コマンド文字列。スペースで分割し program + args として解釈する。
+    /// `{path}` プレースホルダがあればリポジトリの絶対パスに置換、無ければ cwd として渡す。
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub workspaces: Vec<Workspace>,
     pub active_workspace_id: String,
@@ -225,6 +237,13 @@ pub struct Settings {
     /// ネストされたリポジトリスキャン時に除外するディレクトリ名（ユーザー定義）
     #[serde(default)]
     pub excluded_dirs: Vec<String>,
+    /// ユーザー登録のカスタムスクリプト（リポジトリ詳細・カードから実行可能）
+    #[serde(default)]
+    pub scripts: Vec<ScriptConfig>,
+    /// Workspace ごとのリポジトリ表示順（"custom" ソート時に使用）。
+    /// `workspaceId -> [repoId,...]` の Map。未登録のリポジトリは末尾に並ぶ。
+    #[serde(default)]
+    pub workspace_repo_order: HashMap<String, Vec<String>>,
 }
 
 impl Default for Settings {
@@ -247,6 +266,8 @@ impl Default for Settings {
             theme: Theme::System,
             commit_history_limit: 50,
             excluded_dirs: vec![],
+            scripts: vec![],
+            workspace_repo_order: HashMap::new(),
         }
     }
 }

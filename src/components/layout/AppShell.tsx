@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { TopNav } from './TopNav'
 import { WorkspaceSelector } from './WorkspaceSelector'
@@ -6,6 +7,7 @@ import { Onboarding } from './Onboarding'
 import { useSettings } from '../../hooks/useSettings'
 import { useThemeSync } from '../../hooks/useThemeSync'
 import { useWorkspaceWatcher } from '../../hooks/useWorkspaceWatcher'
+import { useAppStore } from '../../store/useAppStore'
 import { Spinner } from '../common/Spinner'
 import { CommandPalette } from '../common/CommandPalette'
 import { ShortcutsHelp } from '../common/ShortcutsHelp'
@@ -15,6 +17,11 @@ export function AppShell() {
   const { settings, isLoading } = useSettings()
   useThemeSync()
   useWorkspaceWatcher()
+  const hydrateWorkspace = useAppStore((s) => s.hydrateWorkspace)
+  const activeWorkspaceId = settings?.activeWorkspaceId ?? null
+  useEffect(() => {
+    hydrateWorkspace(activeWorkspaceId)
+  }, [activeWorkspaceId, hydrateWorkspace])
   const needsOnboarding = !!settings && settings.workspaces.length === 0
 
   return (

@@ -76,10 +76,13 @@ pnpm tauri dev
 
 ファイル構成：
 ```
-settings.json    # Workspace・エディタ・テーマ設定
+settings.json    # Workspace / エディタ / ターミナル / テーマ / スキャン除外 /
+                 #   カスタムスクリプト / per-workspace カード並び順
 repos-meta.json  # リポジトリのタグ・メモ・アーカイブ状態
-kanban.json      # カンバンタスク
+kanban.json      # カンバンタスク（order は f64）
 ```
+
+GitHub PAT は JSON には書き込まず OS キーチェーン（`keyring` クレート）に保存される。
 
 ---
 

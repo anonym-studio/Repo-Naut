@@ -38,6 +38,7 @@ pub fn run() {
             commands::workspace::add_workspace,
             commands::workspace::remove_workspace,
             commands::workspace::set_active_workspace,
+            commands::workspace::set_repo_order,
             // Repository & Git
             commands::git::get_repo_detail,
             commands::git::update_repo_meta,
@@ -74,6 +75,16 @@ pub fn run() {
             commands::settings::set_default_editor,
             commands::settings::open_in_terminal,
             commands::settings::open_url,
+            // Custom scripts
+            commands::scripts::list_scripts,
+            commands::scripts::add_script,
+            commands::scripts::remove_script,
+            commands::scripts::update_script,
+            commands::scripts::run_script,
+            // Backup / restore
+            commands::backup::export_data,
+            commands::backup::preview_backup,
+            commands::backup::import_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,9 +8,9 @@
 
 **Repo-Naut** — ローカルの複数Gitリポジトリを一元管理するTauriデスクトップアプリ。
 
-- フロントエンド: React 18 + TypeScript + Tailwind CSS v4 + react-query + zustand
-- バックエンド: Rust + Tauri v2（コマンドは`invoke()`経由でフロントから呼ぶ）
-- データ: JSONファイル3本（SQLiteなし）
+- フロントエンド: React 18 + TypeScript + Tailwind CSS v4 + react-query + zustand(+persist) + `@dnd-kit/{core,sortable,utilities}`
+- バックエンド: Rust + Tauri v2（コマンドは`invoke()`経由でフロントから呼ぶ）+ `rayon`（並列スキャン）
+- データ: JSONファイル3本（settings / repos-meta / kanban、SQLiteなし）+ OS Keychain（PAT のみ）
 - パッケージマネージャー: **pnpm**（npmは使わない）
 
 ---
@@ -184,12 +184,14 @@ pub struct MyType {
 
 | ファイル | 担当するコマンド群 |
 |---------|------------------|
-| `workspace.rs` | scan_workspace, add/remove/set_active_workspace |
-| `git.rs` | get_repo_detail, update_repo_meta, git_pull/fetch/checkout |
+| `workspace.rs` | scan_workspace, add/remove/set_active_workspace, **set_repo_order**（per-workspace カスタム並び） |
+| `git.rs` | get_repo_detail, update_repo_meta, git_pull/fetch/checkout, **read_readme**, **get_commit_activity** |
 | `archive.rs` | archive_repo, restore_repo |
-| `kanban.rs` | get/create/update/delete/move_task |
-| `github.rs` | get_github_stats, validate/save/delete_pat |
-| `repo_create.rs` | check_gh_auth, create_repo |
+| `kanban.rs` | get/create/update/delete/move_task（order は `f64` で中間挿入） |
+| `github.rs` | get_github_stats, has_pat, validate_pat, validate_stored_pat, save_pat, delete_pat |
+| `repo_create.rs` | check_gh_auth, create_repo（gh CLI + 進捗イベント） |
+| **`scripts.rs`** | list/add/update/remove_script, run_script（GitCommandResult を返す） |
+| **`backup.rs`** | export_data, preview_backup, import_data（単一 JSON 全置換） |
 | `settings.rs` | get/update_settings, open_in_editor/terminal, editor CRUD, open_url |
 
 ---

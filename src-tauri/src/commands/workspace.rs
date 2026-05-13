@@ -2,11 +2,16 @@ use crate::models::{Commit, Platform, RepoStatus, Repository, Workspace};
 use crate::store;
 use crate::watcher;
 use git2::{BranchType, Repository as GitRepo, Status, StatusOptions};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use tauri::AppHandle;
 use uuid::Uuid;
 use walkdir::WalkDir;
+
+/// `collect_languages` でサンプリングする最大ファイル数。100+ リポジトリ環境での全体スキャン時間を抑える。
+const MAX_LANGUAGE_FILES: usize = 800;
 
 /// workspace配下の.gitディレクトリを再帰検索してリポジトリ一覧を返す
 #[tauri::command]
@@ -37,7 +42,10 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
         .collect();
 
     let repos_meta = store::load_repos_meta(&app)?;
+    let archive_root = workspace_root.join(&archive_dir_name);
 
+    // active なリポジトリは workspace ツリーを再帰して探す。`_archive` 配下は別途、
+    // 直下のディレクトリのみを Git リポジトリとして拾う（深い再帰を避けて高速化）。
     let mut found: Vec<PathBuf> = Vec::new();
     let mut walker = WalkDir::new(&workspace_root)
         .max_depth(8)
@@ -52,6 +60,12 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
+
+        // archive ディレクトリ配下はここではスキップ。後段で直下 1 階層だけ拾う
+        if entry.path() == archive_root || entry.path().starts_with(&archive_root) {
+            walker.skip_current_dir();
+            continue;
+        }
 
         // .git を見つけたら親をリポジトリとして登録し、その配下は探索しない
         if name == ".git" {
@@ -69,50 +83,72 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
         }
     }
 
-    let archive_root = workspace_root.join(&archive_dir_name);
-
-    let mut repos: Vec<Repository> = Vec::new();
-    for repo_path in found {
-        let path_str = repo_path.to_string_lossy().to_string();
-        let id = store::repo_id_from_path(&path_str);
-        let name = repo_path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "repo".to_string());
-
-        let meta = repos_meta.repos.get(&id).cloned().unwrap_or_default();
-        let status = if meta.status == "archived" || repo_path.starts_with(&archive_root) {
-            RepoStatus::Archived
-        } else {
-            RepoStatus::Active
-        };
-
-        let git_info = load_git_info(&repo_path);
-        let language = collect_languages(&repo_path);
-        let has_readme = detect_readme(&repo_path).is_some();
-
-        repos.push(Repository {
-            id,
-            name,
-            path: path_str,
-            workspace_id: workspace_id.clone(),
-            remote_url: git_info.remote_url,
-            platform: git_info.platform,
-            latest_commit: git_info.latest_commit,
-            current_branch: git_info.current_branch,
-            branches: Some(git_info.branches),
-            ahead: git_info.ahead,
-            behind: git_info.behind,
-            unstaged_count: git_info.unstaged_count,
-            tags: meta.tags,
-            note: meta.note,
-            language,
-            status,
-            archived_at: meta.archived_at,
-            archive_meta: meta.archive_meta,
-            has_readme,
-        });
+    // archive 配下は「直下のディレクトリ = 1 リポジトリ」前提で軽量スキャン
+    if archive_root.exists() {
+        if let Ok(entries) = std::fs::read_dir(&archive_root) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() && p.join(".git").exists() {
+                    found.push(p);
+                }
+            }
+        }
     }
+    let started = Instant::now();
+    let total = found.len();
+
+    // 各リポジトリ単位で git2 を開いて情報を集めるため、par_iter で並列化する。
+    // git2 は `GitRepo::open` 毎にスレッドローカルなハンドルを作るので問題ない。
+    let repos: Vec<Repository> = found
+        .into_par_iter()
+        .map(|repo_path| {
+            let path_str = repo_path.to_string_lossy().to_string();
+            let id = store::repo_id_from_path(&path_str);
+            let name = repo_path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "repo".to_string());
+
+            let meta = repos_meta.repos.get(&id).cloned().unwrap_or_default();
+            let status = if meta.status == "archived" || repo_path.starts_with(&archive_root) {
+                RepoStatus::Archived
+            } else {
+                RepoStatus::Active
+            };
+
+            let git_info = load_git_info(&repo_path);
+            let language = collect_languages(&repo_path);
+            let has_readme = detect_readme(&repo_path).is_some();
+
+            Repository {
+                id,
+                name,
+                path: path_str,
+                workspace_id: workspace_id.clone(),
+                remote_url: git_info.remote_url,
+                platform: git_info.platform,
+                latest_commit: git_info.latest_commit,
+                current_branch: git_info.current_branch,
+                branches: Some(git_info.branches),
+                ahead: git_info.ahead,
+                behind: git_info.behind,
+                unstaged_count: git_info.unstaged_count,
+                tags: meta.tags,
+                note: meta.note,
+                language,
+                status,
+                archived_at: meta.archived_at,
+                archive_meta: meta.archive_meta,
+                has_readme,
+            }
+        })
+        .collect();
+
+    eprintln!(
+        "[scan_workspace] {} repos scanned in {}ms",
+        total,
+        started.elapsed().as_millis()
+    );
 
     Ok(repos)
 }
@@ -174,6 +210,25 @@ pub async fn set_active_workspace(app: AppHandle, id: String) -> Result<(), Stri
         let _ = watcher::start_watching(&app, active.id.clone(), active.path.clone());
     }
     Ok(())
+}
+
+/// 指定 workspace のリポジトリ表示順を上書き保存する。
+/// `repo_ids` は **その workspace に属するリポジトリ ID** をユーザーが望む順に並べたもの。
+/// 当該 workspace が存在しない場合はエラー。
+#[tauri::command]
+pub async fn set_repo_order(
+    app: AppHandle,
+    workspace_id: String,
+    repo_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut settings = store::load_settings(&app)?;
+    if !settings.workspaces.iter().any(|w| w.id == workspace_id) {
+        return Err(format!("workspace not found: {}", workspace_id));
+    }
+    settings
+        .workspace_repo_order
+        .insert(workspace_id, repo_ids);
+    store::save_settings(&app, &settings)
 }
 
 // ---- 内部ユーティリティ ----
@@ -273,7 +328,18 @@ fn load_git_info(path: &Path) -> GitInfo {
     };
 
     let mut status_opts = StatusOptions::new();
-    status_opts.include_untracked(true).include_ignored(false);
+    // パフォーマンス最適化:
+    //  - include_ignored(false): .gitignore された大量のファイルを走査しない
+    //  - recurse_untracked_dirs(false): untracked ディレクトリ配下を再帰しない
+    //    （`untracked/` というディレクトリ 1 件としてカウントされる）
+    //  - update_index(false): index.lock を取らないので状態取得が高速
+    //  - no_refresh(true): index の自動更新をスキップ
+    status_opts
+        .include_untracked(true)
+        .include_ignored(false)
+        .recurse_untracked_dirs(false)
+        .update_index(false)
+        .no_refresh(true);
     let unstaged_count = repo
         .statuses(Some(&mut status_opts))
         .ok()
@@ -330,10 +396,20 @@ fn detect_platform(url: &str) -> Platform {
     }
 }
 
+/// リポジトリ内のファイル拡張子をサンプリングして主要言語を推定する。
+///
+/// パフォーマンス上の制約:
+///  - `max_depth(3)` で再帰深度を制限（多くのリポジトリ構成で十分）
+///  - `MAX_LANGUAGE_FILES` (800) でサンプリング数を上限化し、巨大モノレポでも高速に処理
+///  - `is_excluded_dir` で `node_modules` などをスキップ
 fn collect_languages(repo_path: &Path) -> Vec<String> {
     let mut counts: HashMap<&'static str, usize> = HashMap::new();
-    let mut walker = WalkDir::new(repo_path).max_depth(4).into_iter();
+    let mut scanned: usize = 0;
+    let mut walker = WalkDir::new(repo_path).max_depth(3).into_iter();
     while let Some(entry) = walker.next() {
+        if scanned >= MAX_LANGUAGE_FILES {
+            break;
+        }
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -345,6 +421,7 @@ fn collect_languages(repo_path: &Path) -> Vec<String> {
                 continue;
             }
         } else if entry.file_type().is_file() {
+            scanned += 1;
             if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
                 if let Some(lang) = ext_to_lang(ext) {
                     *counts.entry(lang).or_insert(0) += 1;

@@ -8,6 +8,7 @@ import { useGitPull, useGitFetch, useGitCheckout } from '../hooks/useGitOps'
 import { useTasks } from '../hooks/useTasks'
 import { EditorButton } from '../components/repo/EditorButton'
 import { ReadmeModal } from '../components/repo/ReadmeModal'
+import { ScriptRunButton } from '../components/repo/ScriptRunButton'
 import { MarkdownPreview } from '../components/common/MarkdownPreview'
 import { GitResultModal, type GitResult } from '../components/common/GitResultModal'
 import { TaskFormModal } from '../components/kanban/TaskFormModal'
@@ -136,6 +137,7 @@ export function RepoDetail() {
             Remote ↗
           </button>
         )}
+        <ScriptRunButton repoPath={repo.path} />
       </section>
 
       <section>

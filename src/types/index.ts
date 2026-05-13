@@ -120,6 +120,14 @@ export type TerminalPreset =
   | 'cmd'
   | 'custom'
 
+// ---- カスタムスクリプト ----
+export type ScriptConfig = {
+  id: string
+  name: string
+  command: string
+  description?: string
+}
+
 // ---- 設定 ----
 export type Settings = {
   workspaces: Workspace[]
@@ -139,6 +147,9 @@ export type Settings = {
   theme: 'light' | 'dark' | 'system'
   commitHistoryLimit: number
   excludedDirs: string[]
+  scripts: ScriptConfig[]
+  /** Workspace ごとのカスタム並び順（"カスタム" ソート時に使用） */
+  workspaceRepoOrder: Record<string, string[]>
 }
 
 // ---- Tauriコマンド戻り値 ----

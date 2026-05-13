@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale'
 import type { Repository } from '../../types'
 import { EditorButton } from './EditorButton'
 import { ReadmeModal } from './ReadmeModal'
+import { ScriptRunButton } from './ScriptRunButton'
 import { useArchiveRepo } from '../../hooks/useArchive'
 import { useGithubStats } from '../../hooks/useGithub'
 import { toast } from '../../store/useToast'
@@ -66,15 +67,25 @@ export function RepoCard({ repo }: Props) {
             {repo.path}
           </p>
         </div>
-        <div className="flex gap-1 flex-wrap justify-end">
-          {repo.language.slice(0, 3).map((lang) => (
+        {/* 言語タグは最大 2 つ表示 + 残数バッジ。max-w で名前列を圧迫しない */}
+        <div className="flex gap-1 justify-end shrink-0 max-w-[40%]">
+          {repo.language.slice(0, 2).map((lang) => (
             <span
               key={lang}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 truncate max-w-[80px]"
+              title={lang}
             >
               {lang}
             </span>
           ))}
+          {repo.language.length > 2 && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500"
+              title={repo.language.slice(2).join(', ')}
+            >
+              +{repo.language.length - 2}
+            </span>
+          )}
         </div>
       </header>
 
@@ -177,6 +188,7 @@ export function RepoCard({ repo }: Props) {
         >
           Terminal
         </button>
+        <ScriptRunButton repoPath={repo.path} variant="compact" />
         {repo.hasReadme ? (
           <button
             type="button"

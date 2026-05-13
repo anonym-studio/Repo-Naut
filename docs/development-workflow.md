@@ -137,6 +137,70 @@ pub async fn do_something(app: AppHandle, param: String) -> Result<SomeType, Str
 
 エラーは `.map_err(|e| e.to_string())` または `?` 演算子（`Result<T, String>` の文脈）でString化して返す。
 
+### D&D 並び替え（`@dnd-kit/sortable`）
+
+`KanbanColumn` / `Repos`（custom ソート時）で同じパターンを採用している。
+
+```tsx
+import { DndContext, PointerSensor, KeyboardSensor, closestCorners,
+  useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, arrayMove,
+  rectSortingStrategy, verticalListSortingStrategy,
+  sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
+// 1. ドラッグ可能アイテム側
+function SortableItem({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      <button {...attributes} {...listeners} className="cursor-grab touch-none">⋮⋮</button>
+      {children}
+    </div>
+  )
+}
+
+// 2. 親側
+const sensors = useSensors(
+  useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+)
+function handleDragEnd(event: DragEndEvent) {
+  const { active, over } = event
+  if (!over || active.id === over.id) return
+  // 並びを arrayMove で再計算してから永続化
+}
+
+<DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+  <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
+    {items.map((i) => <SortableItem key={i.id} id={i.id}>...</SortableItem>)}
+  </SortableContext>
+</DndContext>
+```
+
+ポイント:
+
+- 「カード全体がクリックリンク（stretched link）」と両立させたい場合、`{...listeners}` は **ドラッグハンドルにだけ** 適用する（カード本体は通常クリック動作を維持）。
+- ハンドルには `touch-none cursor-grab active:cursor-grabbing` を付けるとモバイル/タッチでも操作しやすい。
+- Kanban のように列を跨ぐ場合は `closestCorners`、グリッドのソートは `closestCenter` + `rectSortingStrategy`、縦リストは `verticalListSortingStrategy` が向く。
+- 並び順は zustand ではなく **永続化バックエンド**（Tauri コマンド → JSON）に保存するのが原則。
+
+### Git コマンド/スクリプト実行の結果表示（`GitResultModal`）
+
+`git_pull` / `git_fetch` / `git_checkout` / `run_script` は `GitCommandResult { success, stdout, stderr }` を返す。`src/components/common/GitResultModal.tsx` に結果を渡すと、
+
+- 成功 / 失敗のアイコン + 色分け
+- stderr の折りたたみ表示
+- 「もう一度実行」ボタン（`onRetry` コールバック）
+
+までまとめて面倒を見てくれる。新規の長尺コマンドを追加するときは結果型を `GitCommandResult` で統一し、このモーダルを再利用すること。
+
 ### 新しいページを追加する
 
 ```tsx

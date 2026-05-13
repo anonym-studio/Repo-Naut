@@ -1,7 +1,9 @@
 pub mod archive;
+pub mod backup;
 pub mod git;
 pub mod github;
 pub mod kanban;
 pub mod repo_create;
+pub mod scripts;
 pub mod settings;
 pub mod workspace;

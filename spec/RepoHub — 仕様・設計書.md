@@ -1,4 +1,4 @@
-**バージョン**: 1.2.0  
+**バージョン**: 1.3.0  
 **作成日**: 2026-05-13  
 **更新日**: 2026-05-13  
 **ステータス**: Draft
@@ -10,6 +10,7 @@
 |1.0.0|初版作成|
 |1.1.0|リポジトリ作成機能（`gh` CLI連携）・エディタ起動機能（複数エディタ登録・プリセット）を追加|
 |1.2.0|アプリ表示名を Repo-Naut に変更（`identifier`・データディレクトリは後方互換のため従来どおり）|
+|1.3.0|Phase 3 / 4 を順次実装: GitHub PAT 連携 + バッジ、コミットヒートマップ、`GitResultModal`、`?` のキーボードショートカット一覧、カスタムスクリプト、データのエクスポート / インポート、Kanban 同一カラム内並び替え、リポジトリカードの per-workspace カスタム並び順、トースト個別 dismiss / スタック、`_archive` 配下のスキャン最適化、`scan_workspace` の `rayon` 並列化 ほか|
 
 ---
 
@@ -63,11 +64,13 @@
 |React 18 + TypeScript|UIフレームワーク|
 |Vite|ビルドツール|
 |Tailwind CSS v4|スタイリング|
-|`@dnd-kit/core`|カンバンのドラッグ&ドロップ|
+|`@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`|カンバンの同一カラム内並び替え / リポジトリカードの per-workspace 並び順|
 |`@tanstack/react-query`|Tauriコマンド呼び出しのキャッシュ管理|
-|`zustand`|グローバルUIステート管理|
+|`zustand` + persist|グローバルUIステート管理（per-workspace なフィルタ・並び順スナップショット込み）|
 |`date-fns`|日時処理・相対時刻表示|
 |`react-router-dom`|ページ遷移|
+|`react-markdown` (+ `remark-gfm`)|タスク説明・リポジトリメモ・README プレビュー|
+|`@tauri-apps/plugin-dialog`|ネイティブの確認ダイアログ・ファイル/ディレクトリピッカー（バックアップ JSON の保存/読み込みに使用）|
 
 ### 2-2. バックエンド (Rust / Tauri)
 
@@ -512,6 +515,10 @@ type Settings = {
   theme: 'light' | 'dark' | 'system';
   commitHistoryLimit: number;  // デフォルト: 50
   excludedDirs: string[];      // ユーザー定義のスキャン除外ディレクトリ名（node_modules等は既定で除外）
+  scripts: ScriptConfig[];     // カスタムスクリプト（Settings → カスタムスクリプトで登録）
+  /** Workspace ごとのカスタム並び順（sortKey='custom' 時に使用）。
+   *  workspaceId -> repoId[]。未登録のリポジトリは末尾に名前順で並ぶ。 */
+  workspaceRepoOrder: Record<string, string[]>;
 };
 ```
 
@@ -635,6 +642,8 @@ invoke('scan_workspace', { path: string }) → Repository[]
 invoke('add_workspace', { name: string, path: string }) → Workspace
 invoke('remove_workspace', { id: string }) → void
 invoke('set_active_workspace', { id: string }) → void
+// 指定 workspace のリポジトリ表示順を上書き保存（sortKey='custom' 時の並び順）
+invoke('set_repo_order', { workspaceId: string, repoIds: string[] }) → void
 ```
 
 ### 7-2. Repository
@@ -737,6 +746,23 @@ type CreateRepoResult = {
 // ターミナル・URL
 invoke('open_in_terminal', { path: string }) → void
 invoke('open_url', { url: string }) → void
+
+// カスタムスクリプト
+invoke('list_scripts') → ScriptConfig[]
+invoke('add_script', { script: { name, command, description? } }) → ScriptConfig
+invoke('update_script', { id: string, name?, command?, description? }) → ScriptConfig
+invoke('remove_script', { id: string }) → void
+invoke('run_script', { scriptId: string, repoPath: string }) → GitCommandResult
+// ScriptConfig = { id, name, command, description? }
+// 実行ロジック: command を空白分割し program + args として exec。
+// `{path}` プレースホルダがあれば repoPath に置換、無ければ cwd として渡す。
+
+// バックアップ / 復元（単一 JSON ファイル）
+invoke('export_data', { path: string }) → { path, size }
+invoke('preview_backup', { path: string }) → ImportSummary  // 検証のみ
+invoke('import_data', { path: string }) → ImportSummary     // 検証+全置換
+// BackupBundle = { schemaVersion, exportedAt, appVersion, settings, reposMeta, kanban }
+// PAT は keychain にあるためバックアップには含めない。
 ```
 
 ### 7-7. Tauriイベント（Rust → React）
@@ -771,67 +797,87 @@ repo-naut/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   └── src/
-│       ├── main.rs
-│       ├── models.rs              # 共通型定義（Rust側）
-│       ├── store.rs               # JSONファイル読み書きユーティリティ
+│       ├── main.rs                # lib::run() のみ
+│       ├── lib.rs                 # Tauri ビルダー / generate_handler! 登録 / watcher 起動
+│       ├── models.rs              # 共通型定義（Rust側）— Settings に workspaceRepoOrder / scripts を含む
+│       ├── store.rs               # JSONファイル読み書きユーティリティ（atomic write / repo_id_from_path）
+│       ├── watcher.rs             # notify による workspace 監視（workspace_changed 発火）
 │       └── commands/
 │           ├── mod.rs
-│           ├── workspace.rs       # scan_workspace, add/remove_workspace
-│           ├── git.rs             # get_repo_detail, git_pull/fetch/checkout
-│           ├── archive.rs         # archive_repo, restore_repo
-│           ├── kanban.rs          # get/create/update/delete/move task
-│           ├── github.rs          # get_github_stats, validate_pat
-│           ├── repo_create.rs     # check_gh_auth, create_repo（gh CLI実行）
-│           └── settings.rs        # get/update_settings, open_in_editor/terminal 等
-│       └── watcher.rs              # notify による workspace 監視（workspace_changed 発火）
+│           ├── workspace.rs       # scan_workspace（rayon 並列化）/ add/remove/set_active_workspace /
+│           │                      #   set_repo_order（per-workspace カスタム並び）
+│           ├── git.rs             # get_repo_detail / update_repo_meta / git_pull/fetch/checkout /
+│           │                      #   read_readme / get_commit_activity
+│           ├── archive.rs         # archive_repo / restore_repo
+│           ├── kanban.rs          # get/create/update/delete/move_task（order は f64 で中間挿入）
+│           ├── github.rs          # get_github_stats / has_pat / validate_pat / validate_stored_pat /
+│           │                      #   save_pat / delete_pat（PAT は keyring）
+│           ├── repo_create.rs     # check_gh_auth / create_repo（gh CLI 実行 + 進捗ストリーム）
+│           ├── scripts.rs         # list/add/update/remove_script / run_script（GitCommandResult）
+│           ├── backup.rs          # export_data / preview_backup / import_data（単一 JSON 全置換）
+│           └── settings.rs        # get/update_settings / open_in_editor / open_in_terminal /
+│                                  #   add/remove/set_default_editor / open_url
 │
 └── src/
     ├── main.tsx
-    ├── router.tsx                  # createHashRouter（Tauri用にhash必須）
+    ├── router.tsx                 # createHashRouter（Tauri用にhash必須）
     ├── index.css
     ├── pages/
-    │   ├── Dashboard.tsx
-    │   ├── Repos.tsx
-    │   ├── RepoDetail.tsx
+    │   ├── Dashboard.tsx          # 言語分布 / 直近アクティブ Top5 / アーカイブ候補 / コミットヒートマップ
+    │   ├── Repos.tsx              # DndContext + SortableContext（custom ソート時に並び替え）
+    │   ├── RepoDetail.tsx         # メモ下書き自動保存 / GitResultModal / ScriptRunButton
     │   ├── Kanban.tsx
     │   ├── Archive.tsx
-    │   └── Settings.tsx
+    │   └── Settings.tsx           # PAT 管理 / カスタムスクリプト / バックアップ / Editor / Terminal / Theme
     ├── components/
     │   ├── layout/
-    │   │   ├── AppShell.tsx           # 起動時のオンボーディングガードを担当
-    │   │   ├── TopNav.tsx             # グローバルスキャンインジケータ表示
+    │   │   ├── AppShell.tsx           # オンボーディングガード + per-workspace filter hydrate
+    │   │   ├── TopNav.tsx             # グローバルスキャンインジケータ + ?ヘルプボタン
     │   │   ├── WorkspaceSelector.tsx
-    │   │   ├── GhStatusBanner.tsx     # gh CLI未認証時の警告バナー
-    │   │   └── Onboarding.tsx         # 初回起動時の Workspace 登録画面
+    │   │   ├── GhStatusBanner.tsx
+    │   │   └── Onboarding.tsx
     │   ├── repo/
-    │   │   ├── RepoCard.tsx
+    │   │   ├── RepoCard.tsx           # stretched link / PR/Issue バッジ / 言語タグ +N
+    │   │   ├── SortableRepoCard.tsx   # @dnd-kit/sortable ラッパ（カード右上ハンドル）
     │   │   ├── RepoList.tsx
-    │   │   ├── RepoFilter.tsx
-    │   │   ├── EditorButton.tsx       # デフォルトエディタ起動 + ▾ドロップダウン
-    │   │   └── CreateRepoModal.tsx    # リポジトリ作成モーダル
+    │   │   ├── RepoFilter.tsx         # 選択中タグチップ / フィルタクリア / 並び順（custom 含む）
+    │   │   ├── EditorButton.tsx
+    │   │   ├── ScriptRunButton.tsx    # 登録済みスクリプトのドロップダウン実行
+    │   │   ├── ReadmeModal.tsx        # README.md スライドパネル
+    │   │   └── CreateRepoModal.tsx
     │   ├── kanban/
-    │   │   ├── KanbanBoard.tsx
-    │   │   ├── KanbanColumn.tsx
-    │   │   ├── TaskCard.tsx
-    │   │   └── TaskFormModal.tsx      # タスク作成・編集モーダル
-│   └── common/
-│       ├── Spinner.tsx            # 全画面共通のローディング表示
-│       ├── Toaster.tsx            # 成功・エラー通知（ask() ダイアログの結果通知に使用）
-│       ├── CommandPalette.tsx     # Cmd/Ctrl+K のグローバル検索（recent / nav / repo / commit / task）
-│       └── MarkdownPreview.tsx    # react-markdown ベース。タスク説明・リポジトリメモで使用
-├── hooks/
-│   ├── useRepos.ts            # scan_workspace / get_repo_detail / update_repo_meta
-│   ├── useWorkspaces.ts       # add_workspace / remove_workspace
-│   ├── useArchive.ts          # archive_repo / restore_repo
-│   ├── useTasks.ts
-│   ├── useGitOps.ts
-│   ├── useEditor.ts           # エディタ起動・登録管理
-│   ├── useRepoCreate.ts       # gh CLI連携・進捗ストリーム
-│   ├── useThemeSync.ts        # settings.theme を <html>.dark へ反映
-│   ├── useWorkspaceWatcher.ts # workspace_changed イベント → repos クエリ無効化
-│   └── useSettings.ts
-    └── store/
-        └── useAppStore.ts         # zustand（UI状態: フィルタ・選択中repo等）
+    │   │   ├── KanbanBoard.tsx        # closestCorners / cross & in-column reorder
+    │   │   ├── KanbanColumn.tsx       # SortableContext + verticalListSortingStrategy
+    │   │   ├── TaskCard.tsx           # useSortable ベース
+    │   │   └── TaskFormModal.tsx
+    │   └── common/
+    │       ├── Spinner.tsx
+    │       ├── Toaster.tsx            # 個別 dismiss / hover で auto-dismiss 一時停止 / 最大 5 件 / aria-live
+    │       ├── CommandPalette.tsx     # Cmd/Ctrl+K
+    │       ├── ShortcutsHelp.tsx      # ? モーダル + g + key ナビ
+    │       ├── GitResultModal.tsx     # 成功/失敗アイコン / stderr 折りたたみ / もう一度実行
+    │       ├── CommitHeatmap.tsx      # 30 日 × 全リポのコミット数ヒートマップ
+    │       └── MarkdownPreview.tsx
+    ├── hooks/
+    │   ├── useRepos.ts            # scan_workspace / get_repo_detail / update_repo_meta /
+    │   │                          #   useReadme / useCommitActivity / useSetRepoOrder
+    │   ├── useWorkspaces.ts
+    │   ├── useArchive.ts
+    │   ├── useTasks.ts
+    │   ├── useGitOps.ts
+    │   ├── useEditor.ts
+    │   ├── useRepoCreate.ts
+    │   ├── useGithub.ts           # PAT CRUD + useGithubStats（PR/Issue カウント）
+    │   ├── useScripts.ts          # list/add/update/remove_script / run_script
+    │   ├── useBackup.ts           # export/preview/import_data
+    │   ├── useThemeSync.ts
+    │   ├── useWorkspaceWatcher.ts
+    │   └── useSettings.ts
+    ├── store/
+    │   ├── useAppStore.ts         # zustand persist（per-workspace filter/sort/view/order スナップショット）
+    │   └── useToast.ts            # 個別/全閉じ・hover pause・最大スタック
+    └── types/
+        └── index.ts               # 全 TypeScript 型（Rust と 1 対 1）
 ```
 
 ---
@@ -869,9 +915,9 @@ repo-naut/
 ### Phase 4: v1.2（+1〜2週）
 
 - [x] `git pull` / `git fetch` / ブランチ切替のUI実行（成功/失敗を `GitResultModal` で表示）
-- [ ] カスタムスクリプト登録・ワンクリック実行
+- [x] カスタムスクリプト登録・ワンクリック実行（Settings で登録、RepoCard / RepoDetail の `Run ▾` から実行、結果は `GitResultModal`）
 - [ ] `tauri-plugin-updater` による自動アップデート
-- [ ] データのエクスポート / インポート
+- [x] データのエクスポート / インポート（単一 JSON ファイル方式。`schemaVersion`/作成元バージョン埋め込み、インポート前にサマリプレビュー）
 
 ---
 

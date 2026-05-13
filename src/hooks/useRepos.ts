@@ -41,6 +41,19 @@ export function useUpdateRepoMeta() {
 }
 
 /**
+ * Workspace 単位のカスタム並び順を保存する。
+ * 保存後は settings クエリを再フェッチして UI に即反映する。
+ */
+export function useSetRepoOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ workspaceId, repoIds }: { workspaceId: string; repoIds: string[] }) =>
+      invoke('set_repo_order', { workspaceId, repoIds }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  })
+}
+
+/**
  * リポジトリ直下の README.md を読み込む。
  * `enabled` を false にしておけば不要なフェッチを抑止できる（モーダル開閉に合わせて切り替える）。
  */

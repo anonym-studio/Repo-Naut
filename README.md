@@ -4,22 +4,27 @@
 
 [Tauri v2](https://tauri.app/) + React 18 + TypeScript + Rust で実装。個人開発者・フリーランスエンジニアが、workspace ディレクトリ配下に散らばるプロジェクトを「カード一覧 → 即起動 → タスク管理 → アーカイブ」までシームレスに扱えることを目指す。
 
-> **Status**: Phase 2 (v1.0) 相当の機能を一通り実装済み。Phase 3 以降は `docs/tasks.md` 参照。
+> **Status**: Phase 1〜4 をほぼ実装済み（`tauri-plugin-updater` のみ未着手）。残タスクは [`docs/tasks.md`](docs/tasks.md) 参照。
 
 ---
 
 ## 主な機能
 
-- **Workspace 単位のリポジトリスキャン** — 登録した複数のルートディレクトリ配下を `git2` で再帰スキャン。最新コミット・ブランチ・ahead/behind・unstaged 数を一覧表示
+- **Workspace 単位のリポジトリスキャン** — 登録した複数のルートディレクトリ配下を `git2` で再帰スキャン。`rayon` で並列処理し、`_archive` 配下は直下 1 階層だけ拾う軽量モード。最新コミット・ブランチ・ahead/behind・unstaged 数を一覧表示
 - **ファイル監視による自動再スキャン** — `notify` クレートで `.git/HEAD` / `refs/heads/` の変更を 800ms debounce で検知 → クエリ無効化 → 自動再スキャン
 - **アーカイブ機能** — 古いリポジトリを `_archive` ディレクトリへ移動して整理。復元時は元の場所に戻す
-- **カンバン式タスク管理** — リポジトリ横断でタスクを管理（todo / in_progress / review / done）。タスクにリポジトリをひも付け、タスクからリポジトリカードへワンクリックで遷移
-- **エディタ・ターミナル起動** — VS Code / Cursor / Windsurf / Zed のプリセット + カスタム登録。macOS は iTerm2 → Terminal.app、Windows は Windows Terminal → cmd の優先順で自動起動
+- **カンバン式タスク管理** — リポジトリ横断でタスクを管理（todo / in_progress / review / done）。`@dnd-kit/sortable` でカラム間 + 同一カラム内の並び替えに対応（order は `f64` 中間挿入）。タスクからリポジトリカードへワンクリックで遷移
+- **リポジトリカードの D&D 並び替え** — 「並び順 = カスタム」を選ぶとカード右上のハンドルからドラッグ可能。並び順は per-workspace で保存される
+- **エディタ・ターミナル起動** — VS Code / Cursor / Windsurf / Zed のプリセット + カスタム登録。macOS は iTerm2 / Terminal.app / Ghostty、Windows は Windows Terminal / cmd を選択
 - **GitHub リポジトリ作成** — `gh` CLI と連携してアプリ内から `gh repo create` を実行。出力はストリームで表示
-- **README.md プレビュー** — カード／リスト／詳細ページからスライドパネルで開ける（Esc・背景クリックで閉じる）
-- **タグ・メモ** — リポジトリごとに自由にタグとメモ（Markdown）を付けられる。タスクの説明も Markdown 対応
-- **ダッシュボード** — 言語分布・直近アクティブ Top5・アーカイブ候補を集計
-- **グローバル検索（Cmd/Ctrl + K）** — リポジトリ・タスク・最新コミットメッセージ・ナビ項目を横断検索。「最近開いたリポジトリ」も即座に呼び出せる
+- **GitHub PAT 連携** — OS キーチェーンに保存した PAT で PR / Issue 数バッジをカードに表示。Rate limit / 401 / 403 / 404 を区別したエラーハンドリング
+- **カスタムスクリプト** — `Settings` で名前 + コマンド + 説明を登録し、`{path}` プレースホルダで repoPath を渡せる。`RepoCard` / `RepoDetail` の `Run ▾` から実行、結果は `GitResultModal` で表示
+- **データのエクスポート / インポート** — `settings.json` + `repos-meta.json` + `kanban.json` を単一 JSON にまとめてバックアップ。インポート時は事前サマリプレビュー（PAT は keychain 管理のためバックアップに含めない）
+- **README.md プレビュー** — カード／リスト／詳細ページからスライドパネルで開ける
+- **タグ・メモ** — リポジトリごとに自由にタグとメモ（Markdown）を付けられる。メモは localStorage に 800ms debounce で **下書き自動保存**、再オープン時に復元プロンプト
+- **ダッシュボード** — 言語分布・直近アクティブ Top5・アーカイブ候補に加え、**直近 30 日のコミット数を GitHub 風ヒートマップで集計表示**
+- **グローバル検索 + キーボード操作** — `Cmd/Ctrl + K` でコマンドパレット、`?` でショートカット一覧、`g + d/r/k/a/s` の Vim 風ナビゲーション、最近開いたリポジトリも即起動
+- **トースト通知** — 種別アイコン、`aria-live`、`role="alert"`、ホバーで auto-dismiss 一時停止、個別 × / すべて閉じる
 - **ダーク / ライト / システム追従テーマ**
 - **オンボーディング** — Workspace 未登録時は全画面ガイドを表示し、ディレクトリピッカーで簡単登録
 
@@ -31,13 +36,13 @@
 |---|---|
 | **フレームワーク** | Tauri v2 |
 | **フロントエンド** | React 18 + TypeScript / Vite / Tailwind CSS v4 |
-| **状態管理** | `@tanstack/react-query`（サーバー状態）/ `zustand` + persist（UI 状態） |
-| **DnD** | `@dnd-kit/core` |
-| **Markdown** | `react-markdown` |
+| **状態管理** | `@tanstack/react-query`（サーバー状態）/ `zustand` + persist（UI 状態 / per-workspace スナップショット） |
+| **DnD** | `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`（Kanban / RepoCard 並び替え） |
+| **Markdown** | `react-markdown` + `remark-gfm` |
 | **ルーティング** | `react-router-dom` v6（`createHashRouter`） |
-| **ネイティブ連携** | `@tauri-apps/plugin-dialog`（ダイアログ / ファイル選択） |
-| **バックエンド** | Rust（`git2` / `notify` / `serde` / `tokio` / `keyring` / `reqwest` / `uuid` / `chrono`） |
-| **データ永続化** | JSON ファイル 3 本（settings / repos-meta / kanban）、PAT は OS Keychain |
+| **ネイティブ連携** | `@tauri-apps/plugin-dialog`（ダイアログ / ファイル選択 / バックアップ JSON の save/open） |
+| **バックエンド** | Rust（`git2` / `notify` / `rayon` / `serde` / `tokio` / `keyring` / `reqwest` / `uuid` / `chrono` / `walkdir`） |
+| **データ永続化** | JSON ファイル 3 本（settings / repos-meta / kanban）、PAT は OS Keychain（`keyring` クレート） |
 | **パッケージマネージャー** | **pnpm**（npm は使わない） |
 
 ---
@@ -130,33 +135,39 @@ src-tauri/src/store.rs         (JSON 読み書き、atomic write)
 
 ```
 src-tauri/src/
-├── lib.rs              # Tauri ビルダー / コマンド登録 / watcher 起動
-├── models.rs           # 全 Rust 型定義
-├── store.rs            # JSON 読み書きユーティリティ
+├── lib.rs              # Tauri ビルダー / generate_handler! 登録 / watcher 起動
+├── models.rs           # 全 Rust 型定義（Settings に workspaceRepoOrder / scripts を含む）
+├── store.rs            # JSON 読み書きユーティリティ（atomic write / repo_id_from_path）
 ├── watcher.rs          # notify による workspace 監視
 └── commands/
-    ├── workspace.rs    # scan_workspace, add/remove/set_active_workspace
-    ├── git.rs          # get_repo_detail, update_repo_meta, git_pull/fetch/checkout, read_readme
-    ├── archive.rs      # archive_repo, restore_repo
-    ├── kanban.rs       # get/create/update/delete/move_task
-    ├── github.rs       # get_github_stats, validate/save/delete_pat
-    ├── repo_create.rs  # check_gh_auth, create_repo (gh CLI)
-    └── settings.rs     # get/update_settings, open_in_editor/terminal, editor CRUD, open_url
+    ├── workspace.rs    # scan_workspace (rayon 並列) / add/remove/set_active_workspace / set_repo_order
+    ├── git.rs          # get_repo_detail / update_repo_meta / git_pull/fetch/checkout /
+    │                   #   read_readme / get_commit_activity
+    ├── archive.rs      # archive_repo / restore_repo
+    ├── kanban.rs       # get/create/update/delete/move_task（order: f64）
+    ├── github.rs       # get_github_stats / has_pat / validate_pat / save_pat / delete_pat
+    ├── repo_create.rs  # check_gh_auth / create_repo（gh CLI + 進捗ストリーム）
+    ├── scripts.rs      # list/add/update/remove_script / run_script
+    ├── backup.rs       # export_data / preview_backup / import_data
+    └── settings.rs     # get/update_settings / open_in_editor/terminal / editor CRUD / open_url
 
 src/
 ├── types/index.ts      # 全 TypeScript 型定義（Rust 型と 1 対 1 対応）
 ├── pages/              # Dashboard / Repos / RepoDetail / Kanban / Archive / Settings
 ├── components/
 │   ├── layout/         # AppShell / TopNav / WorkspaceSelector / GhStatusBanner / Onboarding
-│   ├── repo/           # RepoCard / RepoList / RepoFilter / EditorButton / CreateRepoModal / ReadmeModal
+│   ├── repo/           # RepoCard / SortableRepoCard / RepoList / RepoFilter /
+│   │                   #   EditorButton / ScriptRunButton / ReadmeModal / CreateRepoModal
 │   ├── kanban/         # KanbanBoard / KanbanColumn / TaskCard / TaskFormModal
-│   └── common/         # Spinner / Toaster / CommandPalette / MarkdownPreview
-├── hooks/              # useRepos / useWorkspaces / useArchive / useTasks / useGitOps /
-│                       #   useEditor / useRepoCreate / useSettings / useThemeSync /
-│                       #   useWorkspaceWatcher
+│   └── common/         # Spinner / Toaster / CommandPalette / ShortcutsHelp /
+│                       #   GitResultModal / CommitHeatmap / MarkdownPreview
+├── hooks/              # useRepos (+ useSetRepoOrder / useReadme / useCommitActivity) /
+│                       #   useWorkspaces / useArchive / useTasks / useGitOps /
+│                       #   useEditor / useRepoCreate / useGithub / useScripts /
+│                       #   useBackup / useSettings / useThemeSync / useWorkspaceWatcher
 └── store/
-    ├── useAppStore.ts  # zustand + persist（UI 状態 + 最近開いたリポジトリ）
-    └── useToast.ts     # トースト通知
+    ├── useAppStore.ts  # zustand + persist（UI 状態 + per-workspace フィルタ/並び順スナップショット）
+    └── useToast.ts     # トースト通知（個別 dismiss / hover pause / 最大スタック）
 ```
 
 ---

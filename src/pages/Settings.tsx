@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { open, ask } from '@tauri-apps/plugin-dialog'
+import { open, save, ask } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import type { EditorPreset, Settings as SettingsType, TerminalPreset } from '../types'
 import { useSettings } from '../hooks/useSettings'
@@ -12,8 +12,21 @@ import {
   useSavePat,
   useValidatePat,
 } from '../hooks/useGithub'
+import {
+  useAddScript,
+  useRemoveScript,
+  useScripts,
+  useUpdateScript,
+} from '../hooks/useScripts'
+import {
+  useExportData,
+  useImportData,
+  usePreviewBackup,
+  type ImportSummary,
+} from '../hooks/useBackup'
 import { Spinner } from '../components/common/Spinner'
 import { toast } from '../store/useToast'
+import type { ScriptConfig } from '../types'
 
 export function Settings() {
   return (
@@ -25,6 +38,8 @@ export function Settings() {
       <TerminalSection />
       <GhSection />
       <GithubPatSection />
+      <ScriptsSection />
+      <BackupSection />
       <ThemeSection />
     </div>
   )
@@ -689,6 +704,376 @@ function PatNoteBlock() {
       PAT は OS キーチェーンに保存され、JSON ファイルには書き込まれません。
     </p>
   )
+}
+
+// ---------- Custom Scripts ----------
+
+function ScriptsSection() {
+  const { scripts, isLoading } = useScripts()
+  const add = useAddScript()
+  const remove = useRemoveScript()
+  const update = useUpdateScript()
+
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState({ name: '', command: '', description: '' })
+  const [editing, setEditing] = useState<ScriptConfig | null>(null)
+
+  const resetDraft = () => setDraft({ name: '', command: '', description: '' })
+
+  const handleAdd = async () => {
+    if (!draft.name.trim() || !draft.command.trim()) {
+      toast.error('名前とコマンドは必須です')
+      return
+    }
+    try {
+      await add.mutateAsync({
+        name: draft.name,
+        command: draft.command,
+        description: draft.description || undefined,
+      })
+      toast.success(`スクリプト「${draft.name}」を追加しました`)
+      resetDraft()
+      setCreating(false)
+    } catch (e) {
+      toast.error(`追加に失敗: ${(e as Error).message}`)
+    }
+  }
+
+  const handleDelete = async (s: ScriptConfig) => {
+    const ok = await ask(`スクリプト「${s.name}」を削除しますか？`, {
+      title: 'スクリプトを削除',
+      kind: 'warning',
+    })
+    if (!ok) return
+    try {
+      await remove.mutateAsync(s.id)
+      toast.success(`「${s.name}」を削除しました`)
+    } catch (e) {
+      toast.error(`削除に失敗: ${(e as Error).message}`)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editing) return
+    if (!editing.name.trim() || !editing.command.trim()) {
+      toast.error('名前とコマンドは必須です')
+      return
+    }
+    try {
+      await update.mutateAsync({
+        id: editing.id,
+        name: editing.name,
+        command: editing.command,
+        description: editing.description ?? '',
+      })
+      toast.success(`「${editing.name}」を更新しました`)
+      setEditing(null)
+    } catch (e) {
+      toast.error(`更新に失敗: ${(e as Error).message}`)
+    }
+  }
+
+  return (
+    <Section
+      title="カスタムスクリプト"
+      description="リポジトリ単位でワンクリック実行できるコマンドを登録します。リポジトリカード・詳細画面の「Run」から呼び出せます。"
+    >
+      {isLoading ? (
+        <Spinner label="読み込み中" />
+      ) : (
+        <div className="space-y-3">
+          {scripts.length === 0 && !creating ? (
+            <p className="text-xs text-gray-500">
+              登録されたスクリプトはありません。「+ 追加」から作成してください。
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+              {scripts.map((s) =>
+                editing?.id === s.id ? (
+                  <li key={s.id} className="py-3 space-y-2">
+                    <Field label="名前">
+                      <input
+                        value={editing.name}
+                        onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="コマンド">
+                      <input
+                        value={editing.command}
+                        onChange={(e) => setEditing({ ...editing, command: e.target.value })}
+                        className={`${inputCls} font-mono`}
+                      />
+                    </Field>
+                    <Field label="説明 (任意)">
+                      <input
+                        value={editing.description ?? ''}
+                        onChange={(e) =>
+                          setEditing({ ...editing, description: e.target.value })
+                        }
+                        className={inputCls}
+                      />
+                    </Field>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(null)}
+                        className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        disabled={update.isPending}
+                        className={primaryBtn}
+                      >
+                        {update.isPending ? '保存中...' : '保存'}
+                      </button>
+                    </div>
+                  </li>
+                ) : (
+                  <li key={s.id} className="py-2 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{s.name}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate" title={s.command}>
+                        {s.command}
+                      </p>
+                      {s.description && (
+                        <p className="text-[11px] text-gray-500 mt-0.5">{s.description}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(s)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        編集
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(s)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+
+          {creating ? (
+            <div className="space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+              <Field label="名前">
+                <input
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  placeholder="例: lint / test / format"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="コマンド">
+                <input
+                  value={draft.command}
+                  onChange={(e) => setDraft({ ...draft, command: e.target.value })}
+                  placeholder="例: pnpm test / cargo fmt / git status"
+                  className={`${inputCls} font-mono`}
+                />
+              </Field>
+              <Field label="説明 (任意)">
+                <input
+                  value={draft.description}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  placeholder="このスクリプトの目的"
+                  className={inputCls}
+                />
+              </Field>
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                スペースで program と引数に分割します。
+                <code className="font-mono text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded mx-1">
+                  {'{path}'}
+                </code>
+                プレースホルダがあれば対象リポジトリのパスに置換、無ければ cwd として渡します。
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreating(false)
+                    resetDraft()
+                  }}
+                  className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={add.isPending}
+                  className={primaryBtn}
+                >
+                  {add.isPending ? '追加中...' : '追加'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="text-xs border border-dashed border-gray-300 dark:border-gray-600 rounded w-full py-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              + 追加
+            </button>
+          )}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ---------- Backup / Restore ----------
+
+function BackupSection() {
+  const exportMut = useExportData()
+  const previewMut = usePreviewBackup()
+  const importMut = useImportData()
+  const [pendingImport, setPendingImport] = useState<{
+    path: string
+    summary: ImportSummary
+  } | null>(null)
+
+  const handleExport = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const defaultName = `repohub-backup-${today}.json`
+      const filePath = await save({
+        title: 'バックアップ先を選択',
+        defaultPath: defaultName,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (!filePath) return
+      const result = await exportMut.mutateAsync(filePath)
+      toast.success(`バックアップを保存しました (${formatBytes(result.size)})`)
+    } catch (e) {
+      toast.error(`エクスポートに失敗: ${(e as Error).message}`)
+    }
+  }
+
+  const handleSelectImport = async () => {
+    try {
+      const selected = await open({
+        title: 'インポートするバックアップを選択',
+        multiple: false,
+        directory: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (!selected || typeof selected !== 'string') return
+      const summary = await previewMut.mutateAsync(selected)
+      setPendingImport({ path: selected, summary })
+    } catch (e) {
+      toast.error(`バックアップの読み込みに失敗: ${(e as Error).message}`)
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    if (!pendingImport) return
+    const ok = await ask(
+      '現在のデータをバックアップで完全に置き換えます。元に戻すには事前に現在のデータをエクスポートしておく必要があります。続行しますか？',
+      { title: 'インポートを実行', kind: 'warning' },
+    )
+    if (!ok) return
+    try {
+      const result = await importMut.mutateAsync(pendingImport.path)
+      toast.success(
+        `インポートしました: workspace ${result.settingsWorkspaces} / repo meta ${result.reposMetaCount} / tasks ${result.tasksCount}`,
+      )
+      setPendingImport(null)
+    } catch (e) {
+      toast.error(`インポートに失敗: ${(e as Error).message}`)
+    }
+  }
+
+  return (
+    <Section
+      title="データの管理"
+      description="設定・タグ・メモ・カンバンタスクを 1 つの JSON ファイルにまとめてバックアップ / 復元します。GitHub PAT は OS キーチェーンに保存されているためバックアップには含まれません。"
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exportMut.isPending}
+            className={primaryBtn}
+          >
+            {exportMut.isPending ? '書き出し中...' : 'エクスポート'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSelectImport}
+            disabled={previewMut.isPending || importMut.isPending}
+            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            {previewMut.isPending ? '読み込み中...' : 'インポート...'}
+          </button>
+        </div>
+
+        {pendingImport && (
+          <div className="border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded p-3 space-y-2">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+              インポート内容を確認してください
+            </p>
+            <dl className="text-[11px] grid grid-cols-2 gap-x-3 gap-y-0.5">
+              <dt className="text-gray-500">ファイル</dt>
+              <dd className="font-mono truncate" title={pendingImport.path}>
+                {pendingImport.path}
+              </dd>
+              <dt className="text-gray-500">作成元バージョン</dt>
+              <dd>v{pendingImport.summary.appVersion}</dd>
+              <dt className="text-gray-500">作成時刻</dt>
+              <dd>{pendingImport.summary.exportedAt}</dd>
+              <dt className="text-gray-500">Workspace 数</dt>
+              <dd>{pendingImport.summary.settingsWorkspaces}</dd>
+              <dt className="text-gray-500">リポメタ件数</dt>
+              <dd>{pendingImport.summary.reposMetaCount}</dd>
+              <dt className="text-gray-500">タスク件数</dt>
+              <dd>{pendingImport.summary.tasksCount}</dd>
+            </dl>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setPendingImport(null)}
+                className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmImport}
+                disabled={importMut.isPending}
+                className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded px-3 py-1"
+              >
+                {importMut.isPending ? '適用中...' : 'インポートを実行'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          バックアップには workspaces / editors / scripts / 除外ディレクトリ / リポジトリのタグ・メモ / カンバンタスクが含まれます。
+        </p>
+      </div>
+    </Section>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
 // ---------- 共通 UI ----------
