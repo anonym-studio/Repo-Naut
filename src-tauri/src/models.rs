@@ -75,6 +75,9 @@ pub struct Repository {
     pub archived_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive_meta: Option<ArchiveMeta>,
+    /// リポジトリ直下に `README.md` 系ファイルが存在するか（スキャン時に検出）
+    #[serde(default)]
+    pub has_readme: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,11 +179,25 @@ pub struct GhSettings {
     pub path: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalPreset {
+    #[default]
+    Auto,
+    Iterm2,
+    TerminalApp,
+    WindowsTerminal,
+    Cmd,
+    Custom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    #[serde(default)]
+    pub preset: TerminalPreset,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -204,6 +221,9 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub theme: Theme,
     pub commit_history_limit: u32,
+    /// ネストされたリポジトリスキャン時に除外するディレクトリ名（ユーザー定義）
+    #[serde(default)]
+    pub excluded_dirs: Vec<String>,
 }
 
 impl Default for Settings {
@@ -225,6 +245,7 @@ impl Default for Settings {
             terminal: TerminalSettings::default(),
             theme: Theme::System,
             commit_history_limit: 50,
+            excluded_dirs: vec![],
         }
     }
 }

@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRepos } from '../hooks/useRepos'
 import { useSettings } from '../hooks/useSettings'
 import { useAppStore } from '../store/useAppStore'
@@ -8,6 +8,7 @@ import { RepoList } from '../components/repo/RepoList'
 import { RepoFilter } from '../components/repo/RepoFilter'
 import { CreateRepoModal } from '../components/repo/CreateRepoModal'
 import { Spinner } from '../components/common/Spinner'
+import { toast } from '../store/useToast'
 import type { Repository } from '../types'
 
 export function Repos() {
@@ -18,7 +19,14 @@ export function Repos() {
   const filterStatus = useAppStore((s) => s.filterStatus)
   const filterTags = useAppStore((s) => s.filterTags)
   const sortKey = useAppStore((s) => s.sortKey)
+  const setFilterLanguage = useAppStore((s) => s.setFilterLanguage)
+  const setFilterStatus = useAppStore((s) => s.setFilterStatus)
+  const setFilterTags = useAppStore((s) => s.setFilterTags)
   const [createOpen, setCreateOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const focusId = searchParams.get('focus')
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const cardRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const availableLanguages = useMemo(() => {
     const set = new Set<string>()
@@ -42,6 +50,52 @@ export function Repos() {
       })
       .sort(buildSorter(sortKey))
   }, [repos, filterStatus, filterLanguage, filterTags, sortKey])
+
+  // `?focus=<repoId>` を受け取って、対応するカードまで自動スクロール + 数秒ハイライト。
+  // フィルタやステータスで隠れている場合は自動的にフィルタを解除して見えるようにする。
+  useEffect(() => {
+    if (!focusId || isLoading) return
+    const target = repos.find((r) => r.id === focusId)
+    if (!target) {
+      toast.error('指定されたリポジトリが見つかりませんでした')
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    let relaxed = false
+    if (filterStatus !== 'all' && target.status !== filterStatus) {
+      setFilterStatus('all')
+      relaxed = true
+    }
+    if (filterLanguage && !target.language.includes(filterLanguage)) {
+      setFilterLanguage(null)
+      relaxed = true
+    }
+    if (filterTags.length > 0 && !filterTags.every((t) => target.tags.includes(t))) {
+      setFilterTags([])
+      relaxed = true
+    }
+    if (relaxed) toast.info('フィルタを一時的に解除してリポジトリを表示しました')
+
+    // フィルタ反映を待ってからスクロールする
+    const scrollTimer = setTimeout(() => {
+      const el = cardRefs.current[focusId]
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightId(focusId)
+      }
+    }, 80)
+    const clearTimer = setTimeout(() => setHighlightId(null), 2600)
+    // URL から focus パラメータを取り除く（リロード時にハイライトが再発火しないように）
+    setSearchParams({}, { replace: true })
+
+    return () => {
+      clearTimeout(scrollTimer)
+      clearTimeout(clearTimer)
+    }
+    // 初回マウント時 + focusId 変化時のみ実行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, isLoading, repos])
 
   if (!settings) return null
 
@@ -89,11 +143,23 @@ export function Repos() {
       ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((r) => (
-            <RepoCard key={r.id} repo={r} />
+            <div
+              key={r.id}
+              ref={(el) => {
+                cardRefs.current[r.id] = el
+              }}
+              className={`transition-all duration-500 ${
+                highlightId === r.id
+                  ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-900 rounded-lg'
+                  : ''
+              }`}
+            >
+              <RepoCard repo={r} />
+            </div>
           ))}
         </div>
       ) : (
-        <RepoList repos={filtered} />
+        <RepoList repos={filtered} highlightId={highlightId} cardRefs={cardRefs} />
       )}
 
       <CreateRepoModal open={createOpen} onClose={() => setCreateOpen(false)} />

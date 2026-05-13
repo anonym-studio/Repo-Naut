@@ -1,12 +1,18 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
-import { useRepos, useRepoDetail } from '../hooks/useRepos'
+import { useRepos, useRepoDetail, useUpdateRepoMeta } from '../hooks/useRepos'
 import { useGitPull, useGitFetch, useGitCheckout } from '../hooks/useGitOps'
 import { useTasks } from '../hooks/useTasks'
 import { EditorButton } from '../components/repo/EditorButton'
-import type { Repository } from '../types'
+import { ReadmeModal } from '../components/repo/ReadmeModal'
+import { MarkdownPreview } from '../components/common/MarkdownPreview'
+import { TaskFormModal } from '../components/kanban/TaskFormModal'
+import { toast } from '../store/useToast'
+import { useAppStore } from '../store/useAppStore'
+import type { Repository, Task } from '../types'
 
 export function RepoDetail() {
   const { id } = useParams<{ id: string }>()
@@ -15,6 +21,14 @@ export function RepoDetail() {
   const detail = useRepoDetail(repo?.path ?? '')
   const { tasks } = useTasks()
   const linkedTasks = tasks.filter((t) => t.repoId === id)
+  const pushRecent = useAppStore((s) => s.pushRecentRepo)
+  const [taskFormOpen, setTaskFormOpen] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [readmeOpen, setReadmeOpen] = useState(false)
+
+  useEffect(() => {
+    if (repo?.id) pushRecent(repo.id)
+  }, [repo?.id, pushRecent])
 
   const pull = useGitPull()
   const fetch = useGitFetch()
@@ -52,6 +66,15 @@ export function RepoDetail() {
         >
           Terminal
         </button>
+        {repo.hasReadme && (
+          <button
+            type="button"
+            onClick={() => setReadmeOpen(true)}
+            className="text-xs border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+          >
+            README
+          </button>
+        )}
         <button
           type="button"
           onClick={() => pull.mutate(repo.path)}
@@ -151,15 +174,36 @@ export function RepoDetail() {
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold mb-2">紐付きタスク</h2>
+        <header className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold">紐付きタスク</h2>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingTask(null)
+              setTaskFormOpen(true)
+            }}
+            className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded px-2 py-0.5"
+          >
+            + タスク追加
+          </button>
+        </header>
         {linkedTasks.length === 0 ? (
           <p className="text-xs text-gray-500">紐付いているタスクはありません</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {linkedTasks.map((t) => (
-              <li key={t.id}>
-                <span className="text-xs text-gray-500 mr-2">[{t.column}]</span>
-                {t.title}
+              <li key={t.id} className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 shrink-0">[{t.column}]</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTask(t)
+                    setTaskFormOpen(true)
+                  }}
+                  className="text-left hover:underline truncate"
+                >
+                  {t.title}
+                </button>
               </li>
             ))}
           </ul>
@@ -167,32 +211,141 @@ export function RepoDetail() {
       </section>
 
       <RepoMetaSection repo={repo} />
+
+      <TaskFormModal
+        open={taskFormOpen}
+        onClose={() => setTaskFormOpen(false)}
+        task={editingTask}
+        defaultColumn="todo"
+        defaultRepoId={repo.id}
+      />
+
+      <ReadmeModal
+        open={readmeOpen}
+        onClose={() => setReadmeOpen(false)}
+        repoName={repo.name}
+        repoPath={repo.path}
+      />
     </div>
   )
 }
 
 function RepoMetaSection({ repo }: { repo: Repository }) {
+  const [editing, setEditing] = useState(false)
+  const [tagsInput, setTagsInput] = useState(repo.tags.join(', '))
+  const [note, setNote] = useState(repo.note ?? '')
+  const update = useUpdateRepoMeta()
+
+  useEffect(() => {
+    setTagsInput(repo.tags.join(', '))
+    setNote(repo.note ?? '')
+  }, [repo.id, repo.tags, repo.note])
+
+  const handleSave = () => {
+    const tags = tagsInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    update.mutate(
+      { id: repo.id, meta: { tags, note: note || undefined } },
+      {
+        onSuccess: () => {
+          setEditing(false)
+          toast.success('タグ・メモを保存しました')
+        },
+        onError: (e) => toast.error(`保存に失敗: ${(e as Error).message}`),
+      },
+    )
+  }
+
+  const handleCancel = () => {
+    setTagsInput(repo.tags.join(', '))
+    setNote(repo.note ?? '')
+    setEditing(false)
+  }
+
   return (
     <section>
-      <h2 className="text-sm font-semibold mb-2">タグ・メモ</h2>
-      {repo.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {repo.tags.map((t) => (
-            <span
-              key={t}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+      <header className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold">タグ・メモ</h2>
+        {editing ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={update.isPending}
+              className="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              #{t}
-            </span>
-          ))}
+              キャンセル
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={update.isPending}
+              className="text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-3 py-1"
+            >
+              {update.isPending ? '保存中...' : '保存'}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            編集
+          </button>
+        )}
+      </header>
+
+      {editing ? (
+        <div className="space-y-3">
+          <label className="text-xs text-gray-500 block">
+            <span className="block mb-1 font-medium">タグ（カンマ区切り）</span>
+            <input
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="frontend, side-project"
+              className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900"
+            />
+          </label>
+          <label className="text-xs text-gray-500 block">
+            <span className="block mb-1 font-medium">メモ（Markdown 対応）</span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={8}
+              placeholder="このリポジトリの目的、TODO、メモなどを記入..."
+              className="w-full text-sm font-mono border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900"
+            />
+          </label>
+          {note.trim() && (
+            <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded p-3 bg-gray-50 dark:bg-gray-800">
+              <p className="text-[10px] text-gray-500 mb-1">プレビュー</p>
+              <MarkdownPreview source={note} />
+            </div>
+          )}
         </div>
-      )}
-      {repo.note ? (
-        <pre className="text-xs whitespace-pre-wrap text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700">
-          {repo.note}
-        </pre>
       ) : (
-        <p className="text-xs text-gray-500">メモはまだありません</p>
+        <>
+          {repo.tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {repo.tags.map((t) => (
+                <span
+                  key={t}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500 mb-3">タグなし</p>
+          )}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700">
+            <MarkdownPreview source={repo.note ?? ''} />
+          </div>
+        </>
       )}
     </section>
   )

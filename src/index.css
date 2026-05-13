@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+/* Tailwind v4: クラスベースの dark バリアントを有効化。
+   html 要素に .dark が付いていれば dark: が適用される */
+@custom-variant dark (&:where(.dark, .dark *));

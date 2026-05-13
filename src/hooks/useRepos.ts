@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
-import type { Repository, RepoMeta, RepoDetail } from '../types'
+import type { Repository, RepoMeta, RepoDetail, ReadmeContent } from '../types'
 import { useSettings } from './useSettings'
 
 export function useRepos() {
@@ -31,5 +31,18 @@ export function useUpdateRepoMeta() {
     mutationFn: ({ id, meta }: { id: string; meta: Partial<RepoMeta> }) =>
       invoke('update_repo_meta', { id, meta }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repos'] }),
+  })
+}
+
+/**
+ * リポジトリ直下の README.md を読み込む。
+ * `enabled` を false にしておけば不要なフェッチを抑止できる（モーダル開閉に合わせて切り替える）。
+ */
+export function useReadme(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['readme', path],
+    queryFn: () => invoke<ReadmeContent>('read_readme', { path }),
+    enabled: enabled && !!path,
+    staleTime: 60_000,
   })
 }

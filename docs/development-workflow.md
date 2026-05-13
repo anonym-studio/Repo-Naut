@@ -101,6 +101,24 @@ useEffect(() => {
 }, [])
 ```
 
+実装例: `useWorkspaceWatcher`（`AppShell` でマウント）が `workspace_changed` を受信し、500ms debounce で `['repos']` クエリを invalidate する。Rust 側は `src-tauri/src/watcher.rs` の `notify::RecommendedWatcher` を `WatcherState`（`Arc<Mutex<Option<RecommendedWatcher>>>`）として `app.manage()` 保管し、`add_workspace` / `set_active_workspace` / `remove_workspace` の都度差し替える。
+
+### ネイティブダイアログ（確認・ディレクトリ選択）
+
+```typescript
+import { ask, open } from '@tauri-apps/plugin-dialog'
+
+const ok = await ask('本当に削除しますか？', { title: '確認', kind: 'warning' })
+if (!ok) return
+
+const dir = await open({ directory: true, multiple: false, title: 'フォルダ選択' })
+if (typeof dir === 'string') {
+  // 選択された絶対パスを利用
+}
+```
+
+`window.confirm()` は使わず `ask()` を使う（プラットフォーム標準のモーダル）。新しいダイアログ系API（`save` / `message` / `confirm`）を追加するときは `src-tauri/capabilities/default.json` の `permissions` に `dialog:*` を加える必要がある点に注意。
+
 ### Rustコマンドのパターン
 
 ```rust

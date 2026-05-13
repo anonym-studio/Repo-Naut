@@ -4,10 +4,16 @@ import { WorkspaceSelector } from './WorkspaceSelector'
 import { GhStatusBanner } from './GhStatusBanner'
 import { Onboarding } from './Onboarding'
 import { useSettings } from '../../hooks/useSettings'
+import { useThemeSync } from '../../hooks/useThemeSync'
+import { useWorkspaceWatcher } from '../../hooks/useWorkspaceWatcher'
 import { Spinner } from '../common/Spinner'
+import { CommandPalette } from '../common/CommandPalette'
+import { Toaster } from '../common/Toaster'
 
 export function AppShell() {
   const { settings, isLoading } = useSettings()
+  useThemeSync()
+  useWorkspaceWatcher()
   const needsOnboarding = !!settings && settings.workspaces.length === 0
 
   return (
@@ -32,6 +38,8 @@ export function AppShell() {
           </main>
         </div>
       )}
+      <CommandPalette />
+      <Toaster />
     </div>
   )
 }

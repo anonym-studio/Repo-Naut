@@ -1,5 +1,6 @@
 use crate::models::{Commit, Platform, RepoStatus, Repository, Workspace};
 use crate::store;
+use crate::watcher;
 use git2::{BranchType, Repository as GitRepo, Status, StatusOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,12 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
         .find(|w| w.path == path)
         .map(|w| w.archive_dir_name.clone())
         .unwrap_or_else(|| "_archive".to_string());
+    let user_excluded: Vec<String> = settings
+        .excluded_dirs
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let repos_meta = store::load_repos_meta(&app)?;
 
@@ -55,8 +62,8 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
             continue;
         }
 
-        // 除外対象（node_modules等）に入ったらツリー全体をスキップ
-        if is_excluded_dir(&name) {
+        // 除外対象（node_modules等 + ユーザー設定）に入ったらツリー全体をスキップ
+        if is_excluded_dir(&name) || user_excluded.iter().any(|e| e == &name) {
             walker.skip_current_dir();
             continue;
         }
@@ -82,6 +89,7 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
 
         let git_info = load_git_info(&repo_path);
         let language = collect_languages(&repo_path);
+        let has_readme = detect_readme(&repo_path).is_some();
 
         repos.push(Repository {
             id,
@@ -102,6 +110,7 @@ pub async fn scan_workspace(app: AppHandle, path: String) -> Result<Vec<Reposito
             status,
             archived_at: meta.archived_at,
             archive_meta: meta.archive_meta,
+            has_readme,
         });
     }
 
@@ -127,6 +136,7 @@ pub async fn add_workspace(
         settings.active_workspace_id = workspace.id.clone();
     }
     store::save_settings(&app, &settings)?;
+    let _ = watcher::start_watching(&app, workspace.id.clone(), workspace.path.clone());
     Ok(workspace)
 }
 
@@ -141,17 +151,50 @@ pub async fn remove_workspace(app: AppHandle, id: String) -> Result<(), String> 
             .map(|w| w.id.clone())
             .unwrap_or_default();
     }
-    store::save_settings(&app, &settings)
+    store::save_settings(&app, &settings)?;
+
+    if let Some(active) = settings
+        .workspaces
+        .iter()
+        .find(|w| w.id == settings.active_workspace_id)
+    {
+        let _ = watcher::start_watching(&app, active.id.clone(), active.path.clone());
+    } else {
+        let _ = watcher::stop_watching(&app);
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn set_active_workspace(app: AppHandle, id: String) -> Result<(), String> {
     let mut settings = store::load_settings(&app)?;
-    settings.active_workspace_id = id;
-    store::save_settings(&app, &settings)
+    settings.active_workspace_id = id.clone();
+    store::save_settings(&app, &settings)?;
+    if let Some(active) = settings.workspaces.iter().find(|w| w.id == id) {
+        let _ = watcher::start_watching(&app, active.id.clone(), active.path.clone());
+    }
+    Ok(())
 }
 
 // ---- 内部ユーティリティ ----
+
+/// リポジトリ直下から README ファイルを探す（大文字小文字を問わず複数の拡張子に対応）。
+/// 見つかれば絶対パスを返す。
+pub(crate) fn detect_readme(repo_path: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(repo_path).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let lower = name.to_ascii_lowercase();
+        let matched = matches!(
+            lower.as_str(),
+            "readme.md" | "readme.markdown" | "readme.mdown" | "readme.mkd" | "readme.rst" | "readme.txt" | "readme"
+        );
+        if matched && entry.file_type().ok()?.is_file() {
+            return Some(entry.path());
+        }
+    }
+    None
+}
 
 fn is_excluded_dir(name: &str) -> bool {
     matches!(

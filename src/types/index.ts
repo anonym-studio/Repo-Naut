@@ -38,6 +38,15 @@ export type Repository = {
   status: 'active' | 'archived'
   archivedAt?: string
   archiveMeta?: ArchiveMeta
+  hasReadme?: boolean
+}
+
+export type ReadmeContent = {
+  fileName: string
+  path: string
+  content: string
+  truncated: boolean
+  size: number
 }
 
 export type RepoMeta = Pick<Repository, 'tags' | 'note' | 'status' | 'archivedAt' | 'archiveMeta'>
@@ -95,6 +104,14 @@ export type EditorConfig = {
   preset?: EditorPreset
 }
 
+export type TerminalPreset =
+  | 'auto'
+  | 'iterm2'
+  | 'terminal_app'
+  | 'windows_terminal'
+  | 'cmd'
+  | 'custom'
+
 // ---- 設定 ----
 export type Settings = {
   workspaces: Workspace[]
@@ -109,9 +126,11 @@ export type Settings = {
   }
   terminal: {
     command?: string
+    preset: TerminalPreset
   }
   theme: 'light' | 'dark' | 'system'
   commitHistoryLimit: number
+  excludedDirs: string[]
 }
 
 // ---- Tauriコマンド戻り値 ----

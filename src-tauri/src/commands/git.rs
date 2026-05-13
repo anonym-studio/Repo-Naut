@@ -1,7 +1,9 @@
+use crate::commands::workspace::detect_readme;
 use crate::models::{Commit, GitCommandResult, RepoDetail, RepoMetaEntry};
 use crate::store;
 use git2::{BranchType, Repository as GitRepo, Sort};
 use serde_json::Value;
+use std::path::PathBuf;
 use std::process::Command;
 use tauri::AppHandle;
 
@@ -119,4 +121,50 @@ fn run_git(path: &str, args: &[&str]) -> Result<GitCommandResult, String> {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
+}
+
+/// リポジトリ直下の README ファイルを読み込んで返す。
+/// 5MB を超える場合は安全のため打ち切る。
+#[tauri::command]
+pub async fn read_readme(path: String) -> Result<ReadmeContent, String> {
+    const MAX_SIZE: u64 = 5 * 1024 * 1024; // 5MB
+
+    let repo_path = PathBuf::from(&path);
+    let file_path = detect_readme(&repo_path).ok_or_else(|| "README not found".to_string())?;
+    let meta = std::fs::metadata(&file_path).map_err(|e| e.to_string())?;
+    let truncated = meta.len() > MAX_SIZE;
+
+    let bytes = if truncated {
+        use std::io::Read;
+        let mut buf = vec![0u8; MAX_SIZE as usize];
+        let mut f = std::fs::File::open(&file_path).map_err(|e| e.to_string())?;
+        let _ = f.read(&mut buf).map_err(|e| e.to_string())?;
+        buf
+    } else {
+        std::fs::read(&file_path).map_err(|e| e.to_string())?
+    };
+
+    let content = String::from_utf8_lossy(&bytes).into_owned();
+    let file_name = file_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "README".to_string());
+
+    Ok(ReadmeContent {
+        file_name,
+        path: file_path.to_string_lossy().to_string(),
+        content,
+        truncated,
+        size: meta.len(),
+    })
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadmeContent {
+    pub file_name: String,
+    pub path: String,
+    pub content: String,
+    pub truncated: bool,
+    pub size: u64,
 }

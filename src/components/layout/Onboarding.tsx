@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { open } from '@tauri-apps/plugin-dialog'
 import { useAddWorkspace } from '../../hooks/useWorkspaces'
 import { Spinner } from '../common/Spinner'
 
@@ -16,11 +17,22 @@ export function Onboarding() {
       { name: name.trim(), path: path.trim() },
       {
         onSuccess: () => {
-          // 追加成功後すぐに Repos へ遷移してスキャン結果を見せる
           navigate('/repos')
         },
       },
     )
+  }
+
+  const handlePickDir = async () => {
+    const selected = await open({ directory: true, multiple: false, title: 'Workspace のルートディレクトリを選択' })
+    if (typeof selected === 'string') {
+      setPath(selected)
+      if (!name.trim()) {
+        const segments = selected.split(/[/\\]/).filter(Boolean)
+        const last = segments[segments.length - 1]
+        if (last) setName(last)
+      }
+    }
   }
 
   return (
@@ -42,17 +54,24 @@ export function Onboarding() {
               className={inputCls}
             />
           </Field>
-          <Field label="ルートディレクトリの絶対パス">
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="/Users/you/projects"
-              required
-              className={inputCls}
-            />
-            <p className="text-[11px] text-gray-500 mt-1">
-              例) <code className="font-mono">/Users/{`<name>`}/Documents/workspace-private</code>
-            </p>
+          <Field label="ルートディレクトリ">
+            <div className="flex gap-2">
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="/Users/you/projects"
+                required
+                className={inputCls}
+              />
+              <button
+                type="button"
+                onClick={handlePickDir}
+                className="text-sm whitespace-nowrap border border-gray-300 dark:border-gray-600 rounded px-3 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                参照…
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1">「参照…」でフォルダ選択ダイアログを開けます</p>
           </Field>
 
           {addWorkspace.isError && (

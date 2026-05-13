@@ -1,17 +1,21 @@
 import { useState } from 'react'
-import type { EditorPreset, Settings as SettingsType } from '../types'
+import { open, ask } from '@tauri-apps/plugin-dialog'
+import type { EditorPreset, Settings as SettingsType, TerminalPreset } from '../types'
 import { useSettings } from '../hooks/useSettings'
 import { useAddWorkspace, useRemoveWorkspace } from '../hooks/useWorkspaces'
 import { useEditor } from '../hooks/useEditor'
 import { useGhAuthStatus } from '../hooks/useRepoCreate'
 import { Spinner } from '../components/common/Spinner'
+import { toast } from '../store/useToast'
 
 export function Settings() {
   return (
     <div className="space-y-10 max-w-3xl">
       <h1 className="text-2xl font-bold">Settings</h1>
       <WorkspaceSection />
+      <ScanSection />
       <EditorSection />
+      <TerminalSection />
       <GhSection />
       <ThemeSection />
     </div>
@@ -38,9 +42,35 @@ function WorkspaceSection() {
         onSuccess: () => {
           setName('')
           setPath('')
+          toast.success(`Workspace「${name.trim()}」を登録しました`)
         },
+        onError: (e) => toast.error(`登録に失敗: ${(e as Error).message}`),
       },
     )
+  }
+
+  const handlePickDir = async () => {
+    const selected = await open({ directory: true, multiple: false, title: 'Workspace のルートディレクトリを選択' })
+    if (typeof selected === 'string') {
+      setPath(selected)
+      if (!name.trim()) {
+        const segments = selected.split(/[/\\]/).filter(Boolean)
+        const last = segments[segments.length - 1]
+        if (last) setName(last)
+      }
+    }
+  }
+
+  const handleRemove = async (id: string, label: string) => {
+    const ok = await ask(`Workspace「${label}」を削除しますか？\n\nリポジトリ自体は削除されません。`, {
+      title: 'Workspace を削除',
+      kind: 'warning',
+    })
+    if (!ok) return
+    removeWorkspace.mutate(id, {
+      onSuccess: () => toast.success(`「${label}」を削除しました`),
+      onError: (e) => toast.error(`削除に失敗: ${(e as Error).message}`),
+    })
   }
 
   return (
@@ -62,7 +92,7 @@ function WorkspaceSection() {
             </div>
             <button
               type="button"
-              onClick={() => removeWorkspace.mutate(ws.id)}
+              onClick={() => handleRemove(ws.id, ws.name)}
               className="text-xs text-red-600 hover:text-red-700 ml-3 shrink-0"
             >
               削除
@@ -70,7 +100,7 @@ function WorkspaceSection() {
           </li>
         ))}
       </ul>
-      <form onSubmit={handleAdd} className="mt-4 grid grid-cols-[160px_1fr_auto] gap-2 items-end">
+      <form onSubmit={handleAdd} className="mt-4 grid grid-cols-[160px_1fr_auto_auto] gap-2 items-end">
         <Field label="名前">
           <input
             value={name}
@@ -87,6 +117,13 @@ function WorkspaceSection() {
             className={inputCls}
           />
         </Field>
+        <button
+          type="button"
+          onClick={handlePickDir}
+          className="text-sm border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          参照…
+        </button>
         <button type="submit" className={primaryBtn} disabled={addWorkspace.isPending}>
           {addWorkspace.isPending ? '追加中...' : '追加'}
         </button>
@@ -116,6 +153,16 @@ function EditorSection() {
   const { editors, defaultEditor, addEditor, removeEditor, setDefaultEditor } = useEditor()
   const [customName, setCustomName] = useState('')
   const [customCommand, setCustomCommand] = useState('')
+
+  const handleRemove = async (id: string, name: string) => {
+    const ok = await ask(`エディタ「${name}」を削除しますか？`, {
+      title: 'エディタを削除',
+      kind: 'warning',
+    })
+    if (!ok) return
+    removeEditor(id)
+    toast.success(`「${name}」を削除しました`)
+  }
 
   const handleAddCustom = (e: React.FormEvent) => {
     e.preventDefault()
@@ -166,7 +213,7 @@ function EditorSection() {
             </div>
             <button
               type="button"
-              onClick={() => removeEditor(ed.id)}
+              onClick={() => handleRemove(ed.id, ed.name)}
               className="text-xs text-red-600 hover:text-red-700"
             >
               削除
@@ -248,6 +295,137 @@ function GhSection() {
           認証済み（{gh.username ?? 'unknown user'}）
         </p>
       )}
+    </Section>
+  )
+}
+
+// ---------- Scan / Excluded Directories ----------
+
+function ScanSection() {
+  const { settings, updateSettings } = useSettings()
+  const [draft, setDraft] = useState('')
+  if (!settings) return null
+
+  const excluded = settings.excludedDirs ?? []
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault()
+    const v = draft.trim()
+    if (!v) return
+    if (excluded.includes(v)) {
+      toast.error(`「${v}」は既に追加されています`)
+      return
+    }
+    updateSettings({ excludedDirs: [...excluded, v] } as Partial<SettingsType>)
+    setDraft('')
+    toast.success(`「${v}」をスキャン除外に追加`)
+  }
+  const handleRemove = (name: string) => {
+    updateSettings({ excludedDirs: excluded.filter((n) => n !== name) } as Partial<SettingsType>)
+  }
+
+  return (
+    <Section
+      title="スキャン除外ディレクトリ"
+      description="リポジトリ検索時にスキップするディレクトリ名（node_modules / target / dist 等は既定で除外）"
+    >
+      {excluded.length === 0 ? (
+        <p className="text-xs text-gray-500">追加の除外設定はありません</p>
+      ) : (
+        <ul className="flex flex-wrap gap-2 mb-3">
+          {excluded.map((d) => (
+            <li
+              key={d}
+              className="flex items-center gap-1 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+            >
+              <span className="font-mono">{d}</span>
+              <button
+                type="button"
+                onClick={() => handleRemove(d)}
+                className="text-gray-400 hover:text-red-600"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={handleAdd} className="flex gap-2 items-end">
+        <Field label="ディレクトリ名">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="vendor"
+            className={inputCls}
+          />
+        </Field>
+        <button type="submit" className={primaryBtn}>
+          追加
+        </button>
+      </form>
+    </Section>
+  )
+}
+
+// ---------- Terminal ----------
+
+const terminalPresets: Array<{ id: TerminalPreset; label: string; sub?: string }> = [
+  { id: 'auto', label: '自動 (推奨)', sub: 'mac: iTerm→Terminal、win: wt→cmd' },
+  { id: 'iterm2', label: 'iTerm2 (macOS)' },
+  { id: 'terminal_app', label: 'Terminal.app (macOS)' },
+  { id: 'windows_terminal', label: 'Windows Terminal' },
+  { id: 'cmd', label: 'cmd.exe' },
+  { id: 'custom', label: 'カスタムコマンド' },
+]
+
+function TerminalSection() {
+  const { settings, updateSettings } = useSettings()
+  if (!settings) return null
+  const preset = settings.terminal?.preset ?? 'auto'
+  const command = settings.terminal?.command ?? ''
+
+  const setPreset = (next: TerminalPreset) => {
+    updateSettings({
+      terminal: { ...settings.terminal, preset: next },
+    } as Partial<SettingsType>)
+  }
+  const setCommand = (next: string) => {
+    updateSettings({
+      terminal: { ...settings.terminal, command: next || undefined },
+    } as Partial<SettingsType>)
+  }
+
+  return (
+    <Section title="ターミナル" description="リポジトリカードの「Terminal」で起動するアプリ。">
+      <div className="space-y-2">
+        {terminalPresets.map((p) => (
+          <label key={p.id} className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="terminal-preset"
+              checked={preset === p.id}
+              onChange={() => setPreset(p.id)}
+              className="mt-1"
+            />
+            <span>
+              {p.label}
+              {p.sub && <span className="block text-xs text-gray-500">{p.sub}</span>}
+            </span>
+          </label>
+        ))}
+        {preset === 'custom' && (
+          <div className="pt-2">
+            <Field label="カスタムコマンド（cwd でリポジトリを開く）">
+              <input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="alacritty / kitty / wezterm ..."
+                className={inputCls}
+              />
+            </Field>
+          </div>
+        )}
+      </div>
     </Section>
   )
 }

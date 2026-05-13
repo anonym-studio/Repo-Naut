@@ -2,18 +2,27 @@ import { useEffect, useState } from 'react'
 import type { Column, NewTask, Task } from '../../types'
 import { useCreateTask, useUpdateTask } from '../../hooks/useTasks'
 import { useRepos } from '../../hooks/useRepos'
+import { MarkdownPreview } from '../common/MarkdownPreview'
+import { toast } from '../../store/useToast'
 
 interface Props {
   open: boolean
   onClose: () => void
   task?: Task | null
   defaultColumn?: Column
+  defaultRepoId?: string
 }
 
 const defaultColumns: Column[] = ['todo', 'in_progress', 'review', 'done']
 const priorities = ['low', 'medium', 'high'] as const
 
-export function TaskFormModal({ open, onClose, task, defaultColumn = 'todo' }: Props) {
+export function TaskFormModal({
+  open,
+  onClose,
+  task,
+  defaultColumn = 'todo',
+  defaultRepoId,
+}: Props) {
   const { repos } = useRepos()
   const createTask = useCreateTask()
   const updateTask = useUpdateTask()
@@ -43,9 +52,9 @@ export function TaskFormModal({ open, onClose, task, defaultColumn = 'todo' }: P
       setPriority('medium')
       setLabelsRaw('')
       setDueDate('')
-      setRepoId('')
+      setRepoId(defaultRepoId ?? '')
     }
-  }, [open, task, defaultColumn])
+  }, [open, task, defaultColumn, defaultRepoId])
 
   if (!open) return null
 
@@ -58,27 +67,36 @@ export function TaskFormModal({ open, onClose, task, defaultColumn = 'todo' }: P
       .filter(Boolean)
 
     if (task) {
+      // 明示的に null を送ると Rust 側で Option::None に解釈される
+      // （undefined のままだと JSON シリアライズで省略されてしまい、リセットできない）
       updateTask.mutate(
         {
           id: task.id,
           patch: {
             title: title.trim(),
-            description: description.trim() || undefined,
+            description: description.trim() ? description.trim() : null,
             column,
             priority,
             labels,
-            dueDate: dueDate || undefined,
-            repoId: repoId || undefined,
-          },
+            dueDate: dueDate || null,
+            repoId: repoId || null,
+          } as Partial<Task>,
         },
-        { onSuccess: () => onClose() },
+        {
+          onSuccess: () => {
+            toast.success('タスクを更新しました')
+            onClose()
+          },
+          onError: (err) => toast.error(`更新に失敗: ${(err as Error).message}`),
+        },
       )
     } else {
       const newTask: NewTask = {
         title: title.trim(),
         description: description.trim() || undefined,
         column,
-        order: Date.now(),
+        // 0 を渡すと Rust 側で「同 column の末尾」に自動で order を割り当てる
+        order: 0,
         priority,
         labels,
         dueDate: dueDate || undefined,
@@ -86,7 +104,13 @@ export function TaskFormModal({ open, onClose, task, defaultColumn = 'todo' }: P
         commitSha: undefined,
         prUrl: undefined,
       }
-      createTask.mutate(newTask, { onSuccess: () => onClose() })
+      createTask.mutate(newTask, {
+        onSuccess: () => {
+          toast.success('タスクを作成しました')
+          onClose()
+        },
+        onError: (err) => toast.error(`作成に失敗: ${(err as Error).message}`),
+      })
     }
   }
 
@@ -114,6 +138,12 @@ export function TaskFormModal({ open, onClose, task, defaultColumn = 'todo' }: P
               rows={4}
               className={inputCls}
             />
+            {description.trim() && (
+              <div className="mt-2 border border-dashed border-gray-300 dark:border-gray-600 rounded p-2 bg-gray-50 dark:bg-gray-800">
+                <p className="text-[10px] text-gray-500 mb-1">プレビュー</p>
+                <MarkdownPreview source={description} />
+              </div>
+            )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="カラム">

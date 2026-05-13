@@ -1,4 +1,4 @@
-use crate::models::{ArchiveMeta, RepoMetaEntry};
+use crate::models::{ArchiveMeta, RepoMetaEntry, Settings};
 use crate::store;
 use git2::Repository as GitRepo;
 use std::fs;
@@ -7,15 +7,14 @@ use tauri::AppHandle;
 
 /// リポジトリを workspace/_archive/ へ移動し、メタデータをスナップショット保存
 #[tauri::command]
-pub async fn archive_repo(app: AppHandle, id: String) -> Result<(), String> {
+pub async fn archive_repo(app: AppHandle, id: String, path: String) -> Result<(), String> {
     let settings = store::load_settings(&app)?;
-
-    // idからworkspace内のリポジトリパスを特定（スキャン経由で位置情報を取得）
-    let (repo_path, workspace_path, archive_dir_name) = locate_repo(&app, &settings, &id).await?;
-
+    let repo_path = PathBuf::from(&path);
     if !repo_path.exists() {
-        return Err(format!("repository path not found: {:?}", repo_path));
+        return Err(format!("repository path not found: {}", path));
     }
+
+    let (workspace_path, archive_dir_name) = find_workspace(&settings, &repo_path)?;
 
     // 最終コミット情報のスナップショット
     let snapshot = capture_last_commit(&repo_path);
@@ -37,9 +36,9 @@ pub async fn archive_repo(app: AppHandle, id: String) -> Result<(), String> {
     let now = store::iso_now();
     let archive_meta = ArchiveMeta {
         original_path: repo_path.to_string_lossy().to_string(),
-        last_commit_sha: snapshot.0.clone(),
-        last_commit_message: snapshot.1.clone(),
-        last_commit_date: snapshot.2.clone(),
+        last_commit_sha: snapshot.0,
+        last_commit_message: snapshot.1,
+        last_commit_date: snapshot.2,
         archived_at: now.clone(),
     };
 
@@ -54,8 +53,7 @@ pub async fn archive_repo(app: AppHandle, id: String) -> Result<(), String> {
         entry.clone()
     };
 
-    // パスが変わるためIDも変わるが、復元時に元のIDへ戻せるよう
-    // 新パスのIDにも同じエントリを複製しておく
+    // パスが変わるためIDも変わる。新パスのIDにも同じエントリを複製しておく
     let new_id = store::repo_id_from_path(&dest.to_string_lossy());
     repos_meta.repos.insert(new_id, updated);
 
@@ -67,6 +65,7 @@ pub async fn archive_repo(app: AppHandle, id: String) -> Result<(), String> {
 pub async fn restore_repo(
     app: AppHandle,
     id: String,
+    path: String,
     target_path: Option<String>,
 ) -> Result<(), String> {
     let mut repos_meta = store::load_repos_meta(&app)?;
@@ -77,12 +76,15 @@ pub async fn restore_repo(
         .ok_or_else(|| format!("archive meta not found for id={}", id))?;
     let archive_meta = entry
         .archive_meta
+        .clone()
         .ok_or_else(|| "this repo has no archive meta".to_string())?;
 
-    let settings = store::load_settings(&app)?;
-    let (current_path, _, _) = locate_repo(&app, &settings, &id).await?;
+    let current_path = PathBuf::from(&path);
     if !current_path.exists() {
-        return Err(format!("archived repo not found at: {:?}", current_path));
+        return Err(format!(
+            "archived repo not found at: {}",
+            current_path.to_string_lossy()
+        ));
     }
 
     let target = target_path
@@ -100,7 +102,7 @@ pub async fn restore_repo(
     }
     fs::rename(&current_path, &target).map_err(|e| format!("failed to move: {}", e))?;
 
-    // メタ更新: 旧位置のエントリを active に変更 / 新IDも更新
+    // メタ更新: 新位置のエントリを active で書き戻し、旧位置のエントリは削除
     let active_entry = RepoMetaEntry {
         tags: entry.tags.clone(),
         note: entry.note.clone(),
@@ -109,12 +111,10 @@ pub async fn restore_repo(
         archive_meta: None,
     };
     let new_id = store::repo_id_from_path(&target.to_string_lossy());
-    repos_meta.repos.insert(new_id, active_entry.clone());
+    repos_meta.repos.insert(new_id, active_entry);
 
-    // 旧アーカイブパスのIDから消す（IDがわかれば）
     let archived_id = store::repo_id_from_path(&current_path.to_string_lossy());
     repos_meta.repos.remove(&archived_id);
-    // 引数で渡されたidが旧IDと一致しない場合（originalPathから生成されたID等）もクリーンアップ
     repos_meta.repos.remove(&id);
 
     store::save_repos_meta(&app, &repos_meta)
@@ -122,21 +122,21 @@ pub async fn restore_repo(
 
 // ---- 内部ユーティリティ ----
 
-/// idからリポジトリのファイルシステム上の位置とworkspace情報を解決する。
-/// repos-meta.json には path が保存されないため、各workspaceをスキャンして
-/// idが一致するリポジトリを探す。
-async fn locate_repo(
-    app: &AppHandle,
-    settings: &crate::models::Settings,
-    id: &str,
-) -> Result<(PathBuf, PathBuf, String), String> {
-    for ws in &settings.workspaces {
-        let repos = super::workspace::scan_workspace(app.clone(), ws.path.clone()).await?;
-        if let Some(r) = repos.into_iter().find(|r| r.id == id) {
-            return Ok((PathBuf::from(r.path), PathBuf::from(&ws.path), ws.archive_dir_name.clone()));
-        }
-    }
-    Err(format!("repo id not found in any workspace: {}", id))
+fn find_workspace(
+    settings: &Settings,
+    repo_path: &Path,
+) -> Result<(PathBuf, String), String> {
+    settings
+        .workspaces
+        .iter()
+        .find(|w| repo_path.starts_with(&w.path))
+        .map(|w| (PathBuf::from(&w.path), w.archive_dir_name.clone()))
+        .ok_or_else(|| {
+            format!(
+                "repo path is not under any registered workspace: {}",
+                repo_path.to_string_lossy()
+            )
+        })
 }
 
 fn capture_last_commit(path: &Path) -> (String, String, String) {

@@ -1,11 +1,37 @@
 pub mod commands;
 pub mod models;
 pub mod store;
+pub mod watcher;
+
+use std::sync::Arc;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            app.manage(Arc::new(watcher::WatcherState::new()));
+            let handle = app.handle().clone();
+
+            if let Ok(settings) = store::load_settings(&handle) {
+                if !settings.active_workspace_id.is_empty() {
+                    if let Some(active) = settings
+                        .workspaces
+                        .iter()
+                        .find(|w| w.id == settings.active_workspace_id)
+                    {
+                        let _ = watcher::start_watching(
+                            &handle,
+                            active.id.clone(),
+                            active.path.clone(),
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Workspace
             commands::workspace::scan_workspace,
@@ -18,6 +44,7 @@ pub fn run() {
             commands::git::git_pull,
             commands::git::git_fetch,
             commands::git::git_checkout,
+            commands::git::read_readme,
             // Archive
             commands::archive::archive_repo,
             commands::archive::restore_repo,

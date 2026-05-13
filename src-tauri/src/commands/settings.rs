@@ -1,4 +1,4 @@
-use crate::models::{EditorConfig, Settings};
+use crate::models::{EditorConfig, Settings, TerminalPreset};
 use crate::store;
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -97,19 +97,73 @@ pub async fn set_default_editor(app: AppHandle, id: String) -> Result<(), String
     store::save_settings(&app, &settings)
 }
 
-/// システムデフォルトのターミナルでディレクトリを開く
+/// ターミナルでディレクトリを開く。
+///
+/// 優先順:
+///  1. `settings.terminal.command` でユーザーが明示的に指定したコマンド
+///  2. `settings.terminal.preset` が `Auto` の場合、macOS では iTerm2 / Windows Terminal を優先
+///  3. 最後の手段として OS のデフォルト（`open` クレートに委譲）
 #[tauri::command]
 pub async fn open_in_terminal(app: AppHandle, path: String) -> Result<(), String> {
     let settings = store::load_settings(&app)?;
+
     if let Some(cmd) = &settings.terminal.command {
-        std::process::Command::new(cmd)
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    } else {
-        // OSデフォルト（macOS: open -a Terminal, Windows: wt.exe）
-        open::that(&path).map_err(|e| e.to_string())?;
+        if !cmd.trim().is_empty() {
+            return spawn_with_cwd(cmd, &path);
+        }
     }
+
+    match settings.terminal.preset {
+        TerminalPreset::Iterm2 => open_macos_app("iTerm", &path),
+        TerminalPreset::TerminalApp => open_macos_app("Terminal", &path),
+        TerminalPreset::WindowsTerminal => spawn_with_cwd("wt", &path),
+        TerminalPreset::Cmd => spawn_with_cwd("cmd", &path),
+        TerminalPreset::Auto | TerminalPreset::Custom => auto_open_terminal(&path),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn auto_open_terminal(path: &str) -> Result<(), String> {
+    // iTerm が入っていればそちらを優先
+    if open_macos_app("iTerm", path).is_ok() {
+        return Ok(());
+    }
+    open_macos_app("Terminal", path)
+}
+
+#[cfg(target_os = "windows")]
+fn auto_open_terminal(path: &str) -> Result<(), String> {
+    // Windows Terminal が入っていればそれを優先、無ければ cmd
+    if spawn_with_cwd("wt", path).is_ok() {
+        return Ok(());
+    }
+    spawn_with_cwd("cmd", path)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn auto_open_terminal(path: &str) -> Result<(), String> {
+    open::that(path).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn open_macos_app(app_name: &str, path: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .args(["-a", app_name, path])
+        .spawn()
+        .map_err(|e| format!("failed to open {}: {}", app_name, e))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_macos_app(_app_name: &str, path: &str) -> Result<(), String> {
+    open::that(path).map_err(|e| e.to_string())
+}
+
+fn spawn_with_cwd(command: &str, path: &str) -> Result<(), String> {
+    std::process::Command::new(command)
+        .current_dir(path)
+        .spawn()
+        .map_err(|e| format!("failed to launch {}: {}", command, e))?;
     Ok(())
 }
 

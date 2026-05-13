@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
+import { ask } from '@tauri-apps/plugin-dialog'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useRepos } from '../hooks/useRepos'
 import { useRestoreRepo } from '../hooks/useArchive'
+import { toast } from '../store/useToast'
 
 export function Archive() {
   const { repos, isLoading } = useRepos()
@@ -38,13 +40,25 @@ export function Archive() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm(`「${r.name}」を復元しますか？`)) restore.mutate({ id: r.id })
+                onClick={async () => {
+                  const dest = r.archiveMeta?.originalPath ?? ''
+                  const ok = await ask(
+                    `「${r.name}」を復元しますか？${dest ? `\n→ ${dest}` : ''}`,
+                    { title: 'リポジトリを復元', kind: 'info' },
+                  )
+                  if (!ok) return
+                  restore.mutate(
+                    { id: r.id, path: r.path },
+                    {
+                      onSuccess: () => toast.success(`「${r.name}」を復元しました`),
+                      onError: (e) => toast.error(`復元に失敗: ${(e as Error).message}`),
+                    },
+                  )
                 }}
                 disabled={restore.isPending}
-                className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
               >
-                復元
+                {restore.isPending ? '復元中...' : '復元'}
               </button>
             </li>
           ))}

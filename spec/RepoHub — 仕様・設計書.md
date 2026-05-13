@@ -192,8 +192,10 @@
 
 ### 3-8. グローバル検索
 
-- `Cmd/Ctrl + K` でコマンドパレットを起動
-- 検索対象: リポジトリ名 / タグ / タスク名 / コミットメッセージ
+- `Cmd/Ctrl + K` でコマンドパレットを起動（トップバー右の「⌘K 検索」ボタンからも開ける）
+- `Esc` で閉じる、`↑↓` で項目移動、`Enter` で選択
+- 検索対象: リポジトリ名 / タグ / 現在ブランチ / タスク名・ラベル / 最新コミットメッセージ + SHA / 主要ナビゲーション項目
+- 検索結果クリックで対応する画面へ遷移（コミットは該当リポジトリ詳細へ）
 
 ### 3-9. 外部アプリ連携
 
@@ -384,6 +386,14 @@ App
 
 Spinner は `src/components/common/Spinner.tsx` の単一コンポーネントを使用する。
 
+### 4-5. テーマ適用方式
+
+- Tailwind CSS v4 のクラスベース `dark:` バリアントを使用。`src/index.css` に `@custom-variant dark (&:where(.dark, .dark *))` を定義
+- `useThemeSync` フック（`AppShell` でマウント）が `settings.theme` を購読し、`<html>` 要素の `dark` クラスを付け外す
+    - `'light'`: `dark` クラスを除去
+    - `'dark'`: `dark` クラスを付与
+    - `'system'`: `prefers-color-scheme: dark` メディアクエリに追従。OS設定変更時も自動で切り替わる
+
 ---
 
 ## 5. データモデル
@@ -489,10 +499,18 @@ type Settings = {
     path?: string;             // gh CLIパス（null = PATH自動検出）
   };
   terminal: {
-    command?: string;          // null = OSデフォルト
+    command?: string;          // 設定があれば最優先で使用される（cwd でリポジトリを開く）
+    preset:
+      | 'auto'                 // macOS: iTerm2→Terminal.app、Windows: wt→cmd を自動選択
+      | 'iterm2'
+      | 'terminal_app'
+      | 'windows_terminal'
+      | 'cmd'
+      | 'custom';
   };
   theme: 'light' | 'dark' | 'system';
   commitHistoryLimit: number;  // デフォルト: 50
+  excludedDirs: string[];      // ユーザー定義のスキャン除外ディレクトリ名（node_modules等は既定で除外）
 };
 ```
 
@@ -625,9 +643,9 @@ invoke('set_active_workspace', { id: string }) → void
 invoke('get_repo_detail', { path: string }) → RepoDetail  // commits[], branches[]
 invoke('update_repo_meta', { id: string, meta: Partial<RepoMeta> }) → void
 
-// アーカイブ
-invoke('archive_repo', { id: string }) → void   // ファイル移動 + meta更新
-invoke('restore_repo', { id: string, targetPath?: string }) → void
+// アーカイブ（path はカード側で既知のため一緒に渡す。サーバ側の再スキャンを省略）
+invoke('archive_repo', { id: string, path: string }) → void   // ファイル移動 + meta更新
+invoke('restore_repo', { id: string, path: string, targetPath?: string }) → void
 ```
 
 ### 7-3. Git操作
@@ -713,7 +731,13 @@ invoke('open_url', { url: string }) → void
 
 ```typescript
 // ファイルシステム変化検知（notify crate）
-listen('workspace_changed', handler: (repos: Repository[]) => void)
+// payload は { workspaceId, workspacePath, reason } の camelCase オブジェクト
+// Rust側で 800ms debounce、`.git/HEAD` と `.git/refs/heads/` の変更のみ通知
+// （`.git/` 配下のオブジェクト書込みや node_modules / target / dist 等のノイズは無視）
+// フロントエンドは受信したら `queryClient.invalidateQueries({ queryKey: ['repos'] })` で再スキャンする
+listen('workspace_changed', handler: (event: {
+  payload: { workspaceId: string; workspacePath: string; reason: string }
+}) => void)
 
 // git操作の進捗通知
 listen('git_progress', handler: (msg: string) => void)
@@ -747,6 +771,7 @@ repoHub/
 │           ├── github.rs          # get_github_stats, validate_pat
 │           ├── repo_create.rs     # check_gh_auth, create_repo（gh CLI実行）
 │           └── settings.rs        # get/update_settings, open_in_editor/terminal 等
+│       └── watcher.rs              # notify による workspace 監視（workspace_changed 発火）
 │
 └── src/
     ├── main.tsx
@@ -777,20 +802,22 @@ repoHub/
     │   │   ├── KanbanColumn.tsx
     │   │   ├── TaskCard.tsx
     │   │   └── TaskFormModal.tsx      # タスク作成・編集モーダル
-    │   └── common/
-    │       ├── Spinner.tsx            # 全画面共通のローディング表示
-    │       ├── CommandPalette.tsx     # （未実装）
-    │       ├── MarkdownPreview.tsx    # （未実装）
-    │       └── GitResultModal.tsx     # （未実装）
-    ├── hooks/
-    │   ├── useRepos.ts            # scan_workspace / get_repo_detail / update_repo_meta
-    │   ├── useWorkspaces.ts       # add_workspace / remove_workspace
-    │   ├── useArchive.ts          # archive_repo / restore_repo
-    │   ├── useTasks.ts
-    │   ├── useGitOps.ts
-    │   ├── useEditor.ts           # エディタ起動・登録管理
-    │   ├── useRepoCreate.ts       # gh CLI連携・進捗ストリーム
-    │   └── useSettings.ts
+│   └── common/
+│       ├── Spinner.tsx            # 全画面共通のローディング表示
+│       ├── Toaster.tsx            # 成功・エラー通知（ask() ダイアログの結果通知に使用）
+│       ├── CommandPalette.tsx     # Cmd/Ctrl+K のグローバル検索（recent / nav / repo / commit / task）
+│       └── MarkdownPreview.tsx    # react-markdown ベース。タスク説明・リポジトリメモで使用
+├── hooks/
+│   ├── useRepos.ts            # scan_workspace / get_repo_detail / update_repo_meta
+│   ├── useWorkspaces.ts       # add_workspace / remove_workspace
+│   ├── useArchive.ts          # archive_repo / restore_repo
+│   ├── useTasks.ts
+│   ├── useGitOps.ts
+│   ├── useEditor.ts           # エディタ起動・登録管理
+│   ├── useRepoCreate.ts       # gh CLI連携・進捗ストリーム
+│   ├── useThemeSync.ts        # settings.theme を <html>.dark へ反映
+│   ├── useWorkspaceWatcher.ts # workspace_changed イベント → repos クエリ無効化
+│   └── useSettings.ts
     └── store/
         └── useAppStore.ts         # zustand（UI状態: フィルタ・選択中repo等）
 ```
@@ -805,7 +832,7 @@ repoHub/
 - [x] Workspace登録・`git2`によるリポジトリスキャン
 - [x] リポジトリカード一覧表示（コミット情報・リモートURLリンク）
 - [x] JSON store（settings / repos-meta）の読み書き
-- [ ] `notify` crateによるディレクトリ監視 ← 次フェーズに先送り
+- [x] `notify` crate によるディレクトリ監視（`workspace_changed` イベント発火 + 自動再スキャン、800ms debounce、`.git/HEAD` と `.git/refs/heads/` のみリスニング）
 - [x] 起動時 `gh auth status` チェック・ステータス表示
 - [x] **オンボーディング画面**（Workspace未登録時に全画面表示）
 
@@ -816,15 +843,16 @@ repoHub/
 - [x] アーカイブ / 復元機能
 - [x] **エディタ起動機能**（プリセット登録・デフォルト設定・カードの▾ドロップダウン）
 - [x] **リポジトリ作成機能**（gh CLI連携・作成モーダル・クローン進捗表示）
-- [x] ターミナル連携（OSデフォルト経由 / `terminal.command` でカスタム可）
-- [ ] タグ・メモ編集UI（バックエンド完了、フォームUI未実装）
+- [x] ターミナル連携（macOS: iTerm2→Terminal.app、Windows: Windows Terminal→cmd の自動優先 + プリセット選択 + カスタムコマンド）
+- [x] タグ・メモ編集UI（リポジトリ詳細から編集モード、Markdown プレビュー対応）
+- [x] スキャン除外ディレクトリ設定UI（ユーザー定義の追加除外）
 - [x] フィルタ / ソート / 表示切替
 
 ### Phase 3: v1.1（+2週）
 
 - [ ] GitHub PAT連携（選択式）/ PR数・Issue数バッジ
-- [ ] ダッシュボード（コミット数グラフ・言語分布）
-- [ ] グローバル検索（`Cmd/Ctrl + K`）
+- [x] ダッシュボード（言語分布・直近アクティブTop5・アーカイブ候補。コミット数グラフは未着手）
+- [x] グローバル検索（`Cmd/Ctrl + K`）
 
 ### Phase 4: v1.2（+1〜2週）
 

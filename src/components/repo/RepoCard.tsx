@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core'
+import { ask } from '@tauri-apps/plugin-dialog'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import type { Repository } from '../../types'
 import { EditorButton } from './EditorButton'
+import { ReadmeModal } from './ReadmeModal'
 import { useArchiveRepo } from '../../hooks/useArchive'
+import { toast } from '../../store/useToast'
 
 interface Props {
   repo: Repository
@@ -12,16 +16,32 @@ interface Props {
 
 export function RepoCard({ repo }: Props) {
   const archive = useArchiveRepo()
+  const [readmeOpen, setReadmeOpen] = useState(false)
   const commitUrl = buildCommitUrl(repo)
   const relativeTime = repo.latestCommit?.date
     ? safeRelative(repo.latestCommit.date)
     : null
 
   const openTerminal = () => {
-    invoke('open_in_terminal', { path: repo.path }).catch(console.error)
+    invoke('open_in_terminal', { path: repo.path }).catch((e) => toast.error(`Terminal起動失敗: ${e}`))
   }
   const openUrl = (url: string) => {
-    invoke('open_url', { url }).catch(console.error)
+    invoke('open_url', { url }).catch((e) => toast.error(`URL起動失敗: ${e}`))
+  }
+
+  const handleArchive = async () => {
+    const ok = await ask(`「${repo.name}」をアーカイブしますか？\n\nリポジトリ本体は workspace 内の .archive/ に移動します。`, {
+      title: 'リポジトリをアーカイブ',
+      kind: 'warning',
+    })
+    if (!ok) return
+    archive.mutate(
+      { id: repo.id, path: repo.path },
+      {
+        onSuccess: () => toast.success(`「${repo.name}」をアーカイブしました`),
+        onError: (e) => toast.error(`アーカイブに失敗: ${(e as Error).message}`),
+      },
+    )
   }
 
   return (
@@ -116,17 +136,39 @@ export function RepoCard({ repo }: Props) {
         >
           Terminal
         </button>
+        {repo.hasReadme ? (
+          <button
+            type="button"
+            onClick={() => setReadmeOpen(true)}
+            title="README.md をプレビュー"
+            className="text-xs border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+          >
+            README
+          </button>
+        ) : (
+          <span
+            title="README.md が見つかりません"
+            className="text-xs text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded px-2 py-1 cursor-not-allowed"
+          >
+            README なし
+          </span>
+        )}
         <button
           type="button"
-          onClick={() => {
-            if (confirm(`「${repo.name}」をアーカイブしますか？`)) archive.mutate(repo.id)
-          }}
+          onClick={handleArchive}
           disabled={archive.isPending}
-          className="ml-auto text-xs text-gray-500 hover:text-red-600"
+          className="ml-auto text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
         >
-          アーカイブ
+          {archive.isPending ? 'アーカイブ中...' : 'アーカイブ'}
         </button>
       </footer>
+
+      <ReadmeModal
+        open={readmeOpen}
+        onClose={() => setReadmeOpen(false)}
+        repoName={repo.name}
+        repoPath={repo.path}
+      />
     </article>
   )
 }
