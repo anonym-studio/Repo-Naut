@@ -1,0 +1,23 @@
+node_modules
+.pnpm-store
+dist
+dist-ssr
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env
+.env
+.env.local

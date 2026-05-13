@@ -1,0 +1,83 @@
+---
+description: Tauriコマンドの追加・実装パターン
+globs: ["src-tauri/src/**/*.rs", "src/hooks/**/*.ts"]
+alwaysApply: false
+---
+
+# Tauriコマンド実装ガイド
+
+## 新コマンド追加の手順
+
+1. `src-tauri/src/models.rs` に必要な型を追加
+2. `src-tauri/src/commands/<module>.rs` にコマンドを実装
+3. `src-tauri/src/lib.rs` の `tauri::generate_handler![]` に追加
+4. `src/types/index.ts` にTypeScript型を追加
+5. `src/hooks/use<Feature>.ts` にHookを作成
+
+## コマンドのシグネチャ
+
+```rust
+#[tauri::command]
+pub async fn command_name(
+    app: AppHandle,
+    param_one: String,
+    param_two: Option<String>,
+) -> Result<ReturnType, String> {
+    // 実装
+}
+```
+
+## よくあるパターン
+
+### 設定の読み書き
+```rust
+let settings = store::load_settings(&app)?;
+// 変更後
+store::save_settings(&app, &settings)?;
+```
+
+### repos-metaの読み書き
+```rust
+let mut meta = store::load_repos_meta(&app)?;
+meta.repos.insert(id, entry);
+store::save_repos_meta(&app, &meta)?;
+```
+
+### Tauriイベントの送信（Rust → React）
+```rust
+use tauri::Emitter;
+app.emit("event_name", &payload).ok();
+```
+
+## 対応するフロントエンドHookパターン
+
+```typescript
+// データ取得
+export function useXxx() {
+  return useQuery({
+    queryKey: ['xxx'],
+    queryFn: () => invoke<ReturnType>('command_name'),
+  })
+}
+
+// データ更新（キャッシュの自動更新付き）
+export function useUpdateXxx() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: InputType) => invoke('update_xxx', { data }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['xxx'] }),
+  })
+}
+```
+
+## 既存コマンドモジュールと責務
+
+| ファイル | コマンド群 |
+|----------|-----------|
+| `workspace.rs` | scan_workspace, add/remove/set_active_workspace |
+| `git.rs` | get_repo_detail, update_repo_meta, git_pull/fetch/checkout |
+| `archive.rs` | archive_repo, restore_repo |
+| `kanban.rs` | get/create/update/delete/move_task |
+| `github.rs` | get_github_stats, validate/save/delete_pat |
+| `repo_create.rs` | check_gh_auth, create_repo |
+| `settings.rs` | get/update_settings, open_in_editor/terminal, add/remove/set_default_editor, open_url |

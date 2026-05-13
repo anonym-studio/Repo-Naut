@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm rebuild *)",
+      "Bash(pnpm type-check *)",
+      "Bash(pnpm lint *)",
+      "Bash(python3 *)",
+      "Bash(pnpm tauri *)"
+    ]
+  }
+}

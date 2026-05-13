@@ -1,0 +1,60 @@
+---
+description: RepoHub プロジェクト全般のルールとパターン
+globs: ["src/**/*.{ts,tsx}", "src-tauri/src/**/*.rs"]
+alwaysApply: true
+---
+
+# RepoHub プロジェクトルール
+
+## 技術スタック
+- Tauri v2 + React 18 + TypeScript
+- Tailwind CSS v4（`tailwind.config.js` 不要、`@import "tailwindcss"` のみ）
+- `@tanstack/react-query`（Tauriコマンドの呼び出し・キャッシュ）
+- `zustand`（UIステートのみ）
+- `react-router-dom` v6（`createHashRouter` を使用 ※Tauriのためhash必須）
+- パッケージマネージャーは **pnpm**（npm は使わない）
+
+## フロントエンドのルール
+
+### Tauriコマンド呼び出し
+- コンポーネントから直接 `invoke()` を呼ばない
+- 必ず `src/hooks/` のカスタムHookを経由する
+- インポートパス: `import { invoke } from '@tauri-apps/api/core'`
+- イベントリッスン: `import { listen } from '@tauri-apps/api/event'`
+
+### 型定義
+- 全TypeScript型は `src/types/index.ts` に集約する
+- Rustの `snake_case` は TypeScript では `camelCase`（serdeが自動変換）
+- 型を追加・変更したら `src-tauri/src/models.rs` も同期する
+
+### ステート管理の使い分け
+| データ種別 | 使用ライブラリ |
+|------------|----------------|
+| Tauriコマンドの結果（サーバーデータ） | `@tanstack/react-query` |
+| フィルタ・ソート・選択状態などUIステート | `zustand` (`src/store/useAppStore.ts`) |
+| コンポーネントローカルな状態 | `useState` |
+
+## バックエンドのルール
+
+### コマンド実装
+- コマンドは `src-tauri/src/commands/` の対応するファイルに実装
+- シグネチャ: `pub async fn xxx(app: AppHandle, ...) -> Result<T, String>`
+- エラーは必ず `String` 型で返す（`.map_err(|e| e.to_string())` または `?` 演算子）
+- **新コマンドは必ず `src-tauri/src/lib.rs` の `generate_handler![]` に登録する**（忘れると実行時エラー）
+
+### データ永続化
+- JSONファイルの読み書きは `src-tauri/src/store.rs` のユーティリティ関数を使う
+- 書き込みは必ず `write_atomic()` を経由する（一時ファイル→リネームで破損防止）
+- Git情報（commit, branches, ahead/behind等）はメモリのみ。`repos-meta.json` には書かない
+- GitHub PATはJSONに含めず `keyring` クレートでOSキーチェーンに保存
+
+### 型定義
+- 全Rust型は `src-tauri/src/models.rs` に集約
+- `#[serde(rename_all = "camelCase")]` を全structに付ける
+- `Option` フィールドには `#[serde(skip_serializing_if = "Option::is_none")]` を付ける
+- `use tauri::Manager;` を忘れると `app.path()` が使えない
+
+## データファイル（`~/Library/Application Support/dev.repohub.app/`）
+- `settings.json` — workspaces, editors, gh/terminal設定, theme
+- `repos-meta.json` — タグ・メモ・アーカイブ状態（キー = パスのSHA256先頭16文字）
+- `kanban.json` — カンバンタスク全件
