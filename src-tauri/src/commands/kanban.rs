@@ -22,7 +22,7 @@ struct NewTaskPayload {
     description: Option<String>,
     column: Column,
     #[serde(default)]
-    order: i32,
+    order: f64,
     priority: Priority,
     #[serde(default)]
     labels: Vec<String>,
@@ -45,15 +45,14 @@ pub async fn create_task(app: AppHandle, task: serde_json::Value) -> Result<Task
     let mut kanban = store::load_kanban(&app)?;
     let now = store::iso_now();
     // order が 0（未指定）の場合は同じ column の末尾に積む
-    let resolved_order = if payload.order == 0 {
+    let resolved_order = if payload.order == 0.0 {
         kanban
             .tasks
             .iter()
             .filter(|t| t.column == payload.column)
             .map(|t| t.order)
-            .max()
-            .map(|m| m + 1)
-            .unwrap_or(1)
+            .fold(0.0_f64, f64::max)
+            + 1.0
     } else {
         payload.order
     };
@@ -120,7 +119,7 @@ pub async fn move_task(
     app: AppHandle,
     id: String,
     column: Column,
-    order: i32,
+    order: f64,
 ) -> Result<(), String> {
     let mut kanban = store::load_kanban(&app)?;
     let task = kanban

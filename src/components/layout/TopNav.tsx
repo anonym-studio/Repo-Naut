@@ -17,7 +17,7 @@ export function TopNav() {
 
   return (
     <header className="flex items-center gap-6 px-6 h-12 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
-      <span className="font-bold text-lg">RepoHub</span>
+      <span className="font-bold text-lg">Repo-Naut</span>
       <nav className="flex gap-4">
         {navItems.map((item) => (
           <Link
@@ -40,6 +40,17 @@ export function TopNav() {
           className="text-xs text-gray-400 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 hover:border-gray-400"
         >
           ⌘K 検索
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            // ? を発火させてショートカットモーダルを開く
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))
+          }}
+          title="キーボードショートカット (?)"
+          className="text-xs text-gray-400 border border-gray-200 dark:border-gray-600 rounded w-6 h-6 flex items-center justify-center hover:border-gray-400"
+        >
+          ?
         </button>
         <Link to="/settings" className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
           ⚙

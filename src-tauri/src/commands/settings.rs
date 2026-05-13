@@ -100,26 +100,56 @@ pub async fn set_default_editor(app: AppHandle, id: String) -> Result<(), String
 /// ターミナルでディレクトリを開く。
 ///
 /// 優先順:
-///  1. `settings.terminal.command` でユーザーが明示的に指定したコマンド
-///  2. `settings.terminal.preset` が `Auto` の場合、macOS では iTerm2 / Windows Terminal を優先
-///  3. 最後の手段として OS のデフォルト（`open` クレートに委譲）
+///  1. `preset` が `Custom` で `command` が設定されていればそれを実行
+///  2. それ以外のプリセットはプリセットに従う（古い `command` 値は無視）
+///  3. `Auto` の場合は OS ごとに最適な端末を起動
 #[tauri::command]
 pub async fn open_in_terminal(app: AppHandle, path: String) -> Result<(), String> {
     let settings = store::load_settings(&app)?;
 
-    if let Some(cmd) = &settings.terminal.command {
-        if !cmd.trim().is_empty() {
-            return spawn_with_cwd(cmd, &path);
-        }
-    }
-
     match settings.terminal.preset {
         TerminalPreset::Iterm2 => open_macos_app("iTerm", &path),
         TerminalPreset::TerminalApp => open_macos_app("Terminal", &path),
-        TerminalPreset::WindowsTerminal => spawn_with_cwd("wt", &path),
-        TerminalPreset::Cmd => spawn_with_cwd("cmd", &path),
-        TerminalPreset::Auto | TerminalPreset::Custom => auto_open_terminal(&path),
+        TerminalPreset::Ghostty => open_ghostty(&path),
+        TerminalPreset::WindowsTerminal => run_custom_command("wt", &path),
+        TerminalPreset::Cmd => run_custom_command("cmd", &path),
+        TerminalPreset::Custom => {
+            let cmd = settings
+                .terminal
+                .command
+                .as_deref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .ok_or("カスタムコマンドが空です。Settings で指定してください。")?;
+            run_custom_command(cmd, &path)
+        }
+        TerminalPreset::Auto => auto_open_terminal(&path),
     }
+}
+
+/// Ghostty を指定ディレクトリで開く。
+///
+/// `open -na Ghostty --args --working-directory=<path>` を使う。
+/// `-n` を付けることで既に起動済みでも新規ウィンドウを開き、`--working-directory` で
+/// ワーキングディレクトリを確実に指定できる（Ghostty 公式の推奨方法）。
+#[cfg(target_os = "macos")]
+fn open_ghostty(path: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .args([
+            "-na",
+            "Ghostty",
+            "--args",
+            &format!("--working-directory={}", path),
+        ])
+        .spawn()
+        .map_err(|e| format!("failed to open Ghostty: {}", e))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_ghostty(path: &str) -> Result<(), String> {
+    // 非 macOS では Ghostty はバイナリ名 `ghostty` で起動できる
+    run_custom_command("ghostty", path)
 }
 
 #[cfg(target_os = "macos")]
@@ -159,10 +189,27 @@ fn open_macos_app(_app_name: &str, path: &str) -> Result<(), String> {
     open::that(path).map_err(|e| e.to_string())
 }
 
-fn spawn_with_cwd(command: &str, path: &str) -> Result<(), String> {
-    std::process::Command::new(command)
-        .current_dir(path)
-        .spawn()
+/// ユーザー指定のコマンド文字列（`open -a Ghostty` のように引数を含むことがある）を
+/// プログラム名と引数に分割して起動する。
+///
+/// `{path}` プレースホルダが含まれていれば対象パスに置換、無ければ `current_dir(path)` で
+/// cwd を渡す（cwd を尊重するターミナルなら自動でそのディレクトリに移動する）。
+fn run_custom_command(command: &str, path: &str) -> Result<(), String> {
+    let mut parts = command.split_whitespace();
+    let program = parts
+        .next()
+        .ok_or_else(|| "empty terminal command".to_string())?;
+    let args: Vec<String> = parts
+        .map(|a| a.replace("{path}", path))
+        .collect();
+    let has_placeholder = command.contains("{path}");
+
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(&args);
+    if !has_placeholder {
+        cmd.current_dir(path);
+    }
+    cmd.spawn()
         .map_err(|e| format!("failed to launch {}: {}", command, e))?;
     Ok(())
 }

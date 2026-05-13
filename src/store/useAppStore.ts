@@ -53,7 +53,7 @@ export const useAppStore = create<AppStore>()(
       clearRecentRepos: () => set({ recentRepoIds: [] }),
     }),
     {
-      name: 'repohub-ui-state',
+      name: 'repo-naut-ui-state',
       partialize: (state) => ({
         viewMode: state.viewMode,
         sortKey: state.sortKey,

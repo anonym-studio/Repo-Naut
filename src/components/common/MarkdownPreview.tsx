@@ -13,7 +13,7 @@ export function MarkdownPreview({ source, className }: Props) {
     )
   }
   return (
-    <div className={`prose-repohub text-sm ${className ?? ''}`}>
+    <div className={`prose-reponaut text-sm ${className ?? ''}`}>
       <ReactMarkdown
         components={{
           a: ({ href, children, ...rest }) => (

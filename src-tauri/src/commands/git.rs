@@ -168,3 +168,124 @@ pub struct ReadmeContent {
     pub truncated: bool,
     pub size: u64,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitActivityDay {
+    /// YYYY-MM-DD（UTC 基準）
+    pub date: String,
+    pub count: u32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitActivity {
+    /// 集計対象に含まれた日数（リクエストされた `days` と同じ）
+    pub days: u32,
+    /// 期間内の合計コミット数
+    pub total: u32,
+    /// 日別のコミット数（古い→新しい順）
+    pub series: Vec<CommitActivityDay>,
+}
+
+/// アクティブな workspace 内の全リポジトリ（アーカイブ除く）から
+/// 直近 `days` 日のコミット数を日別に集計する。
+///
+/// パフォーマンス最適化として:
+///  - 各リポジトリで `revwalk` を走査し、カットオフ時刻より古いコミットが現れたら break する
+///  - 著者の email ベース等のフィルタは行わず、全コミットをカウント
+#[tauri::command]
+pub async fn get_commit_activity(
+    app: AppHandle,
+    days: Option<u32>,
+) -> Result<CommitActivity, String> {
+    use chrono::{Duration, NaiveDate, Utc};
+    use std::collections::HashMap;
+
+    let days = days.unwrap_or(30).clamp(1, 365);
+    let today = Utc::now().date_naive();
+    let cutoff_date = today - Duration::days((days as i64) - 1);
+    let cutoff_ts = cutoff_date
+        .and_hms_opt(0, 0, 0)
+        .map(|dt| dt.and_utc().timestamp())
+        .unwrap_or(0);
+
+    let settings = store::load_settings(&app)?;
+    let workspace = settings
+        .workspaces
+        .iter()
+        .find(|w| w.id == settings.active_workspace_id)
+        .ok_or_else(|| "active workspace not found".to_string())?;
+
+    // workspace を walkdir で再走査するのは重いので、scan_workspace と同じ判定を簡略化:
+    // 直下を 1 階層だけ覗き、`.git` を持つディレクトリを対象とする。
+    let workspace_path = std::path::Path::new(&workspace.path);
+    let mut buckets: HashMap<NaiveDate, u32> = HashMap::new();
+
+    let entries = match std::fs::read_dir(workspace_path) {
+        Ok(it) => it,
+        Err(e) => return Err(format!("failed to read workspace: {}", e)),
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        if !p.join(".git").exists() {
+            continue;
+        }
+
+        let repo = match GitRepo::open(&p) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let mut revwalk = match repo.revwalk() {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if revwalk.set_sorting(Sort::TIME).is_err() {
+            continue;
+        }
+        if revwalk.push_head().is_err() {
+            continue;
+        }
+
+        for oid in revwalk {
+            let oid = match oid {
+                Ok(o) => o,
+                Err(_) => continue,
+            };
+            let commit = match repo.find_commit(oid) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let ts = commit.time().seconds();
+            if ts < cutoff_ts {
+                break;
+            }
+            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
+                .unwrap_or_else(chrono::Utc::now);
+            *buckets.entry(dt.date_naive()).or_insert(0) += 1;
+        }
+    }
+
+    // days 分のシリーズを古い → 新しい順で埋める
+    let mut series = Vec::with_capacity(days as usize);
+    let mut total: u32 = 0;
+    for i in 0..days as i64 {
+        let d = cutoff_date + Duration::days(i);
+        let count = *buckets.get(&d).unwrap_or(&0);
+        total += count;
+        series.push(CommitActivityDay {
+            date: d.format("%Y-%m-%d").to_string(),
+            count,
+        });
+    }
+
+    Ok(CommitActivity {
+        days,
+        total,
+        series,
+    })
+}

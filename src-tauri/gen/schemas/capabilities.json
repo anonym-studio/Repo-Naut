@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capability for RepoHub","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:default"],"platforms":["linux","macOS","windows"]}}
+{"default":{"identifier":"default","description":"Default capability for Repo-Naut","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:default"],"platforms":["linux","macOS","windows"]}}

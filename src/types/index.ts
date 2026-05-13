@@ -87,6 +87,13 @@ export type Task = {
 export type NewTask = Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
 
 // ---- GitHub API (PAT有効時) ----
+export type PatValidation = {
+  valid: boolean
+  login?: string
+  scopes?: string
+  message?: string
+}
+
 export type GitHubStats = {
   openPrCount: number
   openIssueCount: number
@@ -108,6 +115,7 @@ export type TerminalPreset =
   | 'auto'
   | 'iterm2'
   | 'terminal_app'
+  | 'ghostty'
   | 'windows_terminal'
   | 'cmd'
   | 'custom'
@@ -138,6 +146,18 @@ export type GitCommandResult = {
   success: boolean
   stdout: string
   stderr: string
+}
+
+export type CommitActivityDay = {
+  /** YYYY-MM-DD (UTC) */
+  date: string
+  count: number
+}
+
+export type CommitActivity = {
+  days: number
+  total: number
+  series: CommitActivityDay[]
 }
 
 export type GhAuthStatus = {

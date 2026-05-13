@@ -2,13 +2,15 @@ import { Link } from 'react-router-dom'
 import { useMemo } from 'react'
 import { formatDistanceToNow, parseISO, differenceInDays } from 'date-fns'
 import { ja } from 'date-fns/locale'
-import { useRepos } from '../hooks/useRepos'
+import { useRepos, useCommitActivity } from '../hooks/useRepos'
 import { useTasks } from '../hooks/useTasks'
 import { Spinner } from '../components/common/Spinner'
+import { CommitHeatmap } from '../components/common/CommitHeatmap'
 
 export function Dashboard() {
   const { repos, isLoading } = useRepos()
   const { tasks } = useTasks()
+  const { data: activity } = useCommitActivity(30)
 
   const activeRepos = useMemo(() => repos.filter((r) => r.status === 'active'), [repos])
 
@@ -69,6 +71,18 @@ export function Dashboard() {
           link="/kanban"
         />
       </div>
+
+      <Panel
+        title={`コミットアクティビティ (直近 ${activity?.days ?? 30} 日 / 合計 ${
+          activity?.total ?? 0
+        } コミット)`}
+      >
+        {activity ? (
+          <CommitHeatmap activity={activity} />
+        ) : (
+          <p className="text-xs text-gray-500">集計中...</p>
+        )}
+      </Panel>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title="直近アクティブなリポジトリ">

@@ -38,7 +38,7 @@ export function Onboarding() {
   return (
     <div className="h-full flex items-center justify-center px-6">
       <div className="w-full max-w-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
-        <h1 className="text-2xl font-bold mb-1">RepoHub へようこそ</h1>
+        <h1 className="text-2xl font-bold mb-1">Repo-Naut へようこそ</h1>
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
           まず Workspace（リポジトリを束ねるルートディレクトリ）を1つ登録してください。
           登録後、配下の Git リポジトリを自動的にスキャンします。

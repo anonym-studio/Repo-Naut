@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
-import type { Repository, RepoMeta, RepoDetail, ReadmeContent } from '../types'
+import type {
+  Repository,
+  RepoMeta,
+  RepoDetail,
+  ReadmeContent,
+  CommitActivity,
+} from '../types'
 import { useSettings } from './useSettings'
 
 export function useRepos() {
@@ -43,6 +49,21 @@ export function useReadme(path: string, enabled: boolean) {
     queryKey: ['readme', path],
     queryFn: () => invoke<ReadmeContent>('read_readme', { path }),
     enabled: enabled && !!path,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * アクティブな workspace の直近 `days` 日のコミット数を日別で取得する。
+ * Dashboard のヒートマップ/グラフで使う。
+ */
+export function useCommitActivity(days = 30) {
+  const { settings } = useSettings()
+  const activeId = settings?.activeWorkspaceId
+  return useQuery({
+    queryKey: ['commit-activity', activeId, days],
+    queryFn: () => invoke<CommitActivity>('get_commit_activity', { days }),
+    enabled: !!activeId,
     staleTime: 60_000,
   })
 }

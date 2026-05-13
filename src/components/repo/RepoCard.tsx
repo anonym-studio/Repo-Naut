@@ -8,6 +8,7 @@ import type { Repository } from '../../types'
 import { EditorButton } from './EditorButton'
 import { ReadmeModal } from './ReadmeModal'
 import { useArchiveRepo } from '../../hooks/useArchive'
+import { useGithubStats } from '../../hooks/useGithub'
 import { toast } from '../../store/useToast'
 
 interface Props {
@@ -21,6 +22,9 @@ export function RepoCard({ repo }: Props) {
   const relativeTime = repo.latestCommit?.date
     ? safeRelative(repo.latestCommit.date)
     : null
+  // GitHub の PR/Issue 数（PAT 未保存・github 以外では fetch しない）
+  const githubStats = useGithubStats(repo)
+  const stats = githubStats.data
 
   const openTerminal = () => {
     invoke('open_in_terminal', { path: repo.path }).catch((e) => toast.error(`Terminal起動失敗: ${e}`))
@@ -45,14 +49,23 @@ export function RepoCard({ repo }: Props) {
   }
 
   return (
-    <article className="border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 p-4 hover:border-blue-400 transition-colors">
-      <header className="flex items-start justify-between gap-2 mb-2">
-        <Link to={`/repos/${repo.id}`} className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold truncate">{repo.name}</h3>
+    <article className="group relative border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 p-4 hover:border-blue-400 transition-colors">
+      {/* Stretched link: カード全体を詳細ページへのリンクとして機能させる。
+          下のボタン類は relative z-10 を持つので、ボタン操作はリンクを乗り越えない。 */}
+      <Link
+        to={`/repos/${repo.id}`}
+        aria-label={`${repo.name} の詳細を開く`}
+        className="absolute inset-0 rounded-lg z-0 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+      />
+      <header className="flex items-start justify-between gap-2 mb-2 relative z-10 pointer-events-none">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-base font-semibold truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            {repo.name}
+          </h3>
           <p className="text-xs text-gray-500 truncate" title={repo.path}>
             {repo.path}
           </p>
-        </Link>
+        </div>
         <div className="flex gap-1 flex-wrap justify-end">
           {repo.language.slice(0, 3).map((lang) => (
             <span
@@ -66,12 +79,12 @@ export function RepoCard({ repo }: Props) {
       </header>
 
       {repo.latestCommit ? (
-        <div className="text-sm space-y-1 mb-3">
+        <div className="text-sm space-y-1 mb-3 relative z-10 pointer-events-none">
           <p className="truncate" title={repo.latestCommit.message}>
             <button
               type="button"
               onClick={() => commitUrl && openUrl(commitUrl)}
-              className={`font-mono text-xs px-1 rounded ${
+              className={`font-mono text-xs px-1 rounded pointer-events-auto ${
                 commitUrl
                   ? 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
                   : 'bg-gray-100 dark:bg-gray-700'
@@ -89,10 +102,12 @@ export function RepoCard({ repo }: Props) {
           </p>
         </div>
       ) : (
-        <p className="text-xs text-gray-400 mb-3">コミット履歴がありません</p>
+        <p className="text-xs text-gray-400 mb-3 relative z-10 pointer-events-none">
+          コミット履歴がありません
+        </p>
       )}
 
-      <div className="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap items-center gap-2 mb-3">
+      <div className="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap items-center gap-2 mb-3 relative z-10 pointer-events-none">
         {repo.currentBranch && (
           <span className="font-mono px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">
             {repo.currentBranch}
@@ -103,10 +118,36 @@ export function RepoCard({ repo }: Props) {
         {(repo.unstagedCount ?? 0) > 0 && (
           <span className="text-blue-600">●{repo.unstagedCount} unstaged</span>
         )}
+        {stats && (
+          <>
+            <span
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+              title={`Open Pull Requests: ${stats.openPrCount}`}
+            >
+              <span aria-hidden>⇄</span>
+              {stats.openPrCount} PR
+            </span>
+            <span
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+              title={`Open Issues: ${stats.openIssueCount}`}
+            >
+              <span aria-hidden>!</span>
+              {stats.openIssueCount} Issue
+            </span>
+          </>
+        )}
+        {githubStats.isError && (
+          <span
+            className="text-[10px] text-red-500"
+            title={String((githubStats.error as Error)?.message ?? 'GitHub API エラー')}
+          >
+            GitHub: ⚠
+          </span>
+        )}
       </div>
 
       {repo.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-1 mb-3 relative z-10 pointer-events-none">
           {repo.tags.map((tag) => (
             <span
               key={tag}
@@ -118,7 +159,7 @@ export function RepoCard({ repo }: Props) {
         </div>
       )}
 
-      <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+      <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-700 relative z-10">
         {repo.remoteUrl && (
           <button
             type="button"

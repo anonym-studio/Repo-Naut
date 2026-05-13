@@ -1,10 +1,10 @@
 ---
-description: RepoHub プロジェクト全般のルールとパターン
+description: Repo-Naut プロジェクト全般のルールとパターン
 globs: ["src/**/*.{ts,tsx}", "src-tauri/src/**/*.rs"]
 alwaysApply: true
 ---
 
-# RepoHub プロジェクトルール
+# Repo-Naut プロジェクトルール
 
 ## 技術スタック
 - Tauri v2 + React 18 + TypeScript
@@ -54,7 +54,7 @@ alwaysApply: true
 - `Option` フィールドには `#[serde(skip_serializing_if = "Option::is_none")]` を付ける
 - `use tauri::Manager;` を忘れると `app.path()` が使えない
 
-## データファイル（`~/Library/Application Support/dev.repohub.app/`）
+## データファイル（表示名 Repo-Naut／identifier: dev.repohub.app）
 - `settings.json` — workspaces, editors, gh/terminal設定, theme
 - `repos-meta.json` — タグ・メモ・アーカイブ状態（キー = パスのSHA256先頭16文字）
 - `kanban.json` — カンバンタスク全件

@@ -128,7 +128,7 @@ pub struct Task {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub column: Column,
-    pub order: i32,
+    pub order: f64,
     pub priority: Priority,
     pub labels: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -186,6 +186,7 @@ pub enum TerminalPreset {
     Auto,
     Iterm2,
     TerminalApp,
+    Ghostty,
     WindowsTerminal,
     Cmd,
     Custom,

@@ -45,6 +45,7 @@ pub fn run() {
             commands::git::git_fetch,
             commands::git::git_checkout,
             commands::git::read_readme,
+            commands::git::get_commit_activity,
             // Archive
             commands::archive::archive_repo,
             commands::archive::restore_repo,
@@ -57,8 +58,10 @@ pub fn run() {
             // GitHub
             commands::github::get_github_stats,
             commands::github::validate_pat,
+            commands::github::validate_stored_pat,
             commands::github::save_pat,
             commands::github::delete_pat,
+            commands::github::has_pat,
             // gh CLI
             commands::repo_create::check_gh_auth,
             commands::repo_create::create_repo,

@@ -1,4 +1,4 @@
-# RepoHub
+# Repo-Naut
 
 ローカルにある複数の Git リポジトリを一元管理するデスクトップアプリ。
 
@@ -84,7 +84,7 @@ pnpm type-check && pnpm lint && cargo check --manifest-path src-tauri/Cargo.toml
 
 ## データ保存先
 
-JSON ファイル 3 本を Tauri の `app_config_dir()`（`identifier = dev.repohub.app`）配下に保存する。
+JSON ファイル 3 本を Tauri の `app_config_dir()`（`identifier = dev.repohub.app` ※後方互換のため維持）配下に保存する。ウィンドウ・インストーラ上の表示名は **Repo-Naut**。
 
 | プラットフォーム | パス |
 |---|---|
@@ -176,12 +176,16 @@ src/
 
 ## キーボードショートカット
 
+`?` を押すといつでもアプリ内でショートカット一覧モーダルを開けます。
+
 | キー | 動作 |
 |---|---|
+| `?` | ショートカット一覧モーダル |
 | `Cmd/Ctrl + K` | コマンドパレットを開く |
+| `g` → `d` / `r` / `k` / `a` / `s` | Dashboard / Repos / Kanban / Archive / Settings に遷移 |
 | `↑` / `↓` | コマンドパレット内で選択を移動 |
 | `Enter` | 選択中の項目を開く |
-| `Esc` | コマンドパレット / README モーダルを閉じる |
+| `Esc` | モーダル・パレットを閉じる |
 
 ---
 

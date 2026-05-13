@@ -8,6 +8,7 @@ import { useThemeSync } from '../../hooks/useThemeSync'
 import { useWorkspaceWatcher } from '../../hooks/useWorkspaceWatcher'
 import { Spinner } from '../common/Spinner'
 import { CommandPalette } from '../common/CommandPalette'
+import { ShortcutsHelp } from '../common/ShortcutsHelp'
 import { Toaster } from '../common/Toaster'
 
 export function AppShell() {
@@ -39,6 +40,7 @@ export function AppShell() {
         </div>
       )}
       <CommandPalette />
+      <ShortcutsHelp />
       <Toaster />
     </div>
   )

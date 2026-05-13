@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { open, ask } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
 import type { EditorPreset, Settings as SettingsType, TerminalPreset } from '../types'
 import { useSettings } from '../hooks/useSettings'
 import { useAddWorkspace, useRemoveWorkspace } from '../hooks/useWorkspaces'
 import { useEditor } from '../hooks/useEditor'
 import { useGhAuthStatus } from '../hooks/useRepoCreate'
+import {
+  useDeletePat,
+  useHasPat,
+  useSavePat,
+  useValidatePat,
+} from '../hooks/useGithub'
 import { Spinner } from '../components/common/Spinner'
 import { toast } from '../store/useToast'
 
@@ -17,6 +24,7 @@ export function Settings() {
       <EditorSection />
       <TerminalSection />
       <GhSection />
+      <GithubPatSection />
       <ThemeSection />
     </div>
   )
@@ -373,6 +381,7 @@ const terminalPresets: Array<{ id: TerminalPreset; label: string; sub?: string }
   { id: 'auto', label: '自動 (推奨)', sub: 'mac: iTerm→Terminal、win: wt→cmd' },
   { id: 'iterm2', label: 'iTerm2 (macOS)' },
   { id: 'terminal_app', label: 'Terminal.app (macOS)' },
+  { id: 'ghostty', label: 'Ghostty (macOS / Linux)', sub: 'open -na Ghostty --args --working-directory=...' },
   { id: 'windows_terminal', label: 'Windows Terminal' },
   { id: 'cmd', label: 'cmd.exe' },
   { id: 'custom', label: 'カスタムコマンド' },
@@ -414,15 +423,22 @@ function TerminalSection() {
           </label>
         ))}
         {preset === 'custom' && (
-          <div className="pt-2">
-            <Field label="カスタムコマンド（cwd でリポジトリを開く）">
+          <div className="pt-2 space-y-1">
+            <Field label="カスタムコマンド">
               <input
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
-                placeholder="alacritty / kitty / wezterm ..."
+                placeholder="例: alacritty / wezterm start / open -a Ghostty"
                 className={inputCls}
               />
             </Field>
+            <p className="text-[11px] text-gray-500 leading-relaxed">
+              スペースで program と引数に分割します。
+              <code className="font-mono text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded mx-1">
+                {'{path}'}
+              </code>
+              プレースホルダがあれば対象リポジトリのパスに置換、無ければ cwd として渡します。
+            </p>
           </div>
         )}
       </div>
@@ -456,6 +472,222 @@ function ThemeSection() {
         ))}
       </div>
     </Section>
+  )
+}
+
+// ---------- GitHub PAT ----------
+
+function GithubPatSection() {
+  const { data: hasPat, isLoading } = useHasPat()
+  const validate = useValidatePat()
+  const save = useSavePat()
+  const remove = useDeletePat()
+
+  const [input, setInput] = useState('')
+  const [revealed, setRevealed] = useState(false)
+  // 直近の検証結果。Settings 内に表示する。
+  const [lastValidation, setLastValidation] = useState<{
+    valid: boolean
+    message: string
+  } | null>(null)
+
+  const handleValidate = async (pat?: string) => {
+    const target = (pat ?? input).trim()
+    if (!target) {
+      toast.error('PAT を入力してください')
+      return null
+    }
+    try {
+      const result = await validate.mutateAsync(target)
+      if (result.valid) {
+        const scopeText = result.scopes && result.scopes.length > 0 ? ` / scope: ${result.scopes}` : ''
+        setLastValidation({
+          valid: true,
+          message: `${result.login ?? 'unknown'} として認証成功${scopeText}`,
+        })
+        return result
+      }
+      setLastValidation({ valid: false, message: result.message ?? '検証に失敗しました' })
+      return result
+    } catch (e) {
+      setLastValidation({ valid: false, message: (e as Error).message })
+      return null
+    }
+  }
+
+  const handleSave = async () => {
+    const target = input.trim()
+    if (!target) {
+      toast.error('PAT を入力してください')
+      return
+    }
+    const result = await handleValidate(target)
+    if (!result?.valid) {
+      // 検証失敗時は保存しない
+      return
+    }
+    try {
+      await save.mutateAsync(target)
+      setInput('')
+      setRevealed(false)
+      toast.success('PAT を保存しました')
+    } catch (e) {
+      toast.error(`保存に失敗: ${(e as Error).message}`)
+    }
+  }
+
+  const handleDelete = async () => {
+    const ok = await ask('保存済みの PAT を削除しますか？\n削除すると PR/Issue バッジが表示されなくなります。', {
+      title: 'PAT を削除',
+      kind: 'warning',
+    })
+    if (!ok) return
+    try {
+      await remove.mutateAsync()
+      setLastValidation(null)
+      toast.success('PAT を削除しました')
+    } catch (e) {
+      toast.error(`削除に失敗: ${(e as Error).message}`)
+    }
+  }
+
+  // 保存済み PAT で /user を叩いて疎通確認する
+  const [testing, setTesting] = useState(false)
+  const handleTestExisting = async () => {
+    setTesting(true)
+    try {
+      const result = await invoke<{
+        valid: boolean
+        login?: string
+        scopes?: string
+        message?: string
+      }>('validate_stored_pat')
+      if (result.valid) {
+        const scopeText = result.scopes ? ` / scope: ${result.scopes}` : ''
+        toast.success(`接続成功: ${result.login ?? 'unknown'}${scopeText}`)
+        setLastValidation({
+          valid: true,
+          message: `${result.login ?? 'unknown'} として認証成功${scopeText}`,
+        })
+      } else {
+        toast.error(result.message ?? '接続に失敗しました')
+        setLastValidation({ valid: false, message: result.message ?? '接続に失敗しました' })
+      }
+    } catch (e) {
+      toast.error(`接続に失敗: ${e}`)
+      setLastValidation({ valid: false, message: String(e) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <Section
+      title="GitHub PAT 連携"
+      description="Personal Access Token を OS のキーチェーンに保存し、リポジトリカードに PR/Issue 数バッジを表示します。"
+    >
+      {isLoading ? (
+        <Spinner label="読み込み中" />
+      ) : hasPat ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px]"
+            >
+              ✓
+            </span>
+            <span>PAT は保存済みです（値はキーチェーンから取り出せません）</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleTestExisting}
+              disabled={testing}
+              className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              {testing ? '接続テスト中...' : '接続テスト'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={remove.isPending}
+              className="text-xs border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded px-3 py-1 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-50"
+            >
+              {remove.isPending ? '削除中...' : 'PAT を削除'}
+            </button>
+          </div>
+          <PatNoteBlock />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <Field label="Personal Access Token">
+            <div className="flex gap-2 items-stretch">
+              <input
+                type={revealed ? 'text' : 'password'}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="ghp_xxx... または github_pat_xxx..."
+                className={inputCls}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => setRevealed((v) => !v)}
+                title={revealed ? '隠す' : '表示する'}
+                className="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                {revealed ? '隠す' : '表示'}
+              </button>
+            </div>
+          </Field>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => handleValidate()}
+              disabled={validate.isPending || !input.trim()}
+              className="text-xs border border-gray-300 dark:border-gray-600 rounded px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              {validate.isPending ? '検証中...' : '検証のみ'}
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={save.isPending || validate.isPending || !input.trim()}
+              className={primaryBtn}
+            >
+              {save.isPending ? '保存中...' : '検証して保存'}
+            </button>
+          </div>
+          <PatNoteBlock />
+        </div>
+      )}
+
+      {lastValidation && (
+        <div
+          className={`mt-3 text-xs px-3 py-2 rounded border ${
+            lastValidation.valid
+              ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+              : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+          }`}
+        >
+          {lastValidation.message}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+function PatNoteBlock() {
+  return (
+    <p className="text-[11px] text-gray-500 leading-relaxed">
+      推奨スコープ: <code className="font-mono">repo</code>（または fine-grained PAT で
+      <code className="font-mono mx-1">Issues: Read</code>と
+      <code className="font-mono mx-1">Pull requests: Read</code>）。
+      <br />
+      PAT は OS キーチェーンに保存され、JSON ファイルには書き込まれません。
+    </p>
   )
 }
 

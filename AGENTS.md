@@ -6,7 +6,7 @@
 
 ## プロジェクト概要
 
-**RepoHub** — ローカルの複数Gitリポジトリを一元管理するTauriデスクトップアプリ。
+**Repo-Naut** — ローカルの複数Gitリポジトリを一元管理するTauriデスクトップアプリ。
 
 - フロントエンド: React 18 + TypeScript + Tailwind CSS v4 + react-query + zustand
 - バックエンド: Rust + Tauri v2（コマンドは`invoke()`経由でフロントから呼ぶ）

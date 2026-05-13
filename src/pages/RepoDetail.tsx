@@ -9,6 +9,7 @@ import { useTasks } from '../hooks/useTasks'
 import { EditorButton } from '../components/repo/EditorButton'
 import { ReadmeModal } from '../components/repo/ReadmeModal'
 import { MarkdownPreview } from '../components/common/MarkdownPreview'
+import { GitResultModal, type GitResult } from '../components/common/GitResultModal'
 import { TaskFormModal } from '../components/kanban/TaskFormModal'
 import { toast } from '../store/useToast'
 import { useAppStore } from '../store/useAppStore'
@@ -25,6 +26,9 @@ export function RepoDetail() {
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [readmeOpen, setReadmeOpen] = useState(false)
+  const [gitResult, setGitResult] = useState<GitResult | null>(null)
+  // GitResultModal の「もう一度実行」用に最後の操作を覚えておく
+  const [lastGitOp, setLastGitOp] = useState<(() => void) | null>(null)
 
   useEffect(() => {
     if (repo?.id) pushRecent(repo.id)
@@ -33,6 +37,36 @@ export function RepoDetail() {
   const pull = useGitPull()
   const fetch = useGitFetch()
   const checkout = useGitCheckout()
+
+  const runPull = () => {
+    if (!repo) return
+    setLastGitOp(() => runPull)
+    pull.mutate(repo.path, {
+      onSuccess: (result) => setGitResult({ command: 'pull', result }),
+      onError: (e) => toast.error(`git pull に失敗: ${(e as Error).message}`),
+    })
+  }
+  const runFetch = () => {
+    if (!repo) return
+    setLastGitOp(() => runFetch)
+    fetch.mutate(repo.path, {
+      onSuccess: (result) => setGitResult({ command: 'fetch', result }),
+      onError: (e) => toast.error(`git fetch に失敗: ${(e as Error).message}`),
+    })
+  }
+  const runCheckout = (branch: string) => {
+    if (!repo) return
+    const op = () => runCheckout(branch)
+    setLastGitOp(() => op)
+    checkout.mutate(
+      { path: repo.path, branch },
+      {
+        onSuccess: (result) =>
+          setGitResult({ command: 'checkout', context: branch, result }),
+        onError: (e) => toast.error(`git checkout に失敗: ${(e as Error).message}`),
+      },
+    )
+  }
 
   if (!repo) {
     return (
@@ -77,19 +111,19 @@ export function RepoDetail() {
         )}
         <button
           type="button"
-          onClick={() => pull.mutate(repo.path)}
+          onClick={runPull}
           disabled={pull.isPending}
           className={btnCls}
         >
-          git pull
+          {pull.isPending ? 'pull 中...' : 'git pull'}
         </button>
         <button
           type="button"
-          onClick={() => fetch.mutate(repo.path)}
+          onClick={runFetch}
           disabled={fetch.isPending}
           className={btnCls}
         >
-          git fetch
+          {fetch.isPending ? 'fetch 中...' : 'git fetch'}
         </button>
         {repo.remoteUrl && (
           <button
@@ -104,19 +138,6 @@ export function RepoDetail() {
         )}
       </section>
 
-      {(pull.data || fetch.data) && (
-        <section className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-3 text-xs font-mono whitespace-pre-wrap">
-          {[pull.data, fetch.data]
-            .filter(Boolean)
-            .map((res, i) => (
-              <pre key={i}>
-                {res!.stdout}
-                {res!.stderr}
-              </pre>
-            ))}
-        </section>
-      )}
-
       <section>
         <h2 className="text-sm font-semibold mb-2">ブランチ</h2>
         <div className="flex flex-wrap gap-2">
@@ -124,7 +145,7 @@ export function RepoDetail() {
             <button
               key={b}
               type="button"
-              onClick={() => checkout.mutate({ path: repo.path, branch: b })}
+              onClick={() => runCheckout(b)}
               disabled={checkout.isPending}
               className={`text-xs font-mono px-2 py-1 rounded border ${
                 b === repo.currentBranch
@@ -226,20 +247,87 @@ export function RepoDetail() {
         repoName={repo.name}
         repoPath={repo.path}
       />
+
+      <GitResultModal
+        open={!!gitResult}
+        onClose={() => setGitResult(null)}
+        result={gitResult}
+        onRetry={lastGitOp ?? undefined}
+        retrying={pull.isPending || fetch.isPending || checkout.isPending}
+      />
     </div>
   )
+}
+
+interface MetaDraft {
+  tagsInput: string
+  note: string
+  savedAt: number
+}
+
+const draftKey = (repoId: string) => `reponaut.metaDraft.${repoId}`
+
+function loadDraft(repoId: string): MetaDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(repoId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as MetaDraft
+    if (typeof parsed.tagsInput !== 'string' || typeof parsed.note !== 'string') return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveDraft(repoId: string, draft: MetaDraft) {
+  try {
+    localStorage.setItem(draftKey(repoId), JSON.stringify(draft))
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function clearDraft(repoId: string) {
+  try {
+    localStorage.removeItem(draftKey(repoId))
+  } catch {
+    /* noop */
+  }
 }
 
 function RepoMetaSection({ repo }: { repo: Repository }) {
   const [editing, setEditing] = useState(false)
   const [tagsInput, setTagsInput] = useState(repo.tags.join(', '))
   const [note, setNote] = useState(repo.note ?? '')
+  const [draftInfo, setDraftInfo] = useState<MetaDraft | null>(null)
   const update = useUpdateRepoMeta()
 
+  // リポジトリ切替時、サーバーの値をベースに reset しつつ、未保存下書きがあれば通知する
   useEffect(() => {
     setTagsInput(repo.tags.join(', '))
     setNote(repo.note ?? '')
+    setEditing(false)
+
+    const draft = loadDraft(repo.id)
+    const serverTags = repo.tags.join(', ')
+    const serverNote = repo.note ?? ''
+    // サーバー値と一致している下書きは無効化（古い残骸を消す）
+    if (draft && draft.tagsInput === serverTags && draft.note === serverNote) {
+      clearDraft(repo.id)
+      setDraftInfo(null)
+    } else {
+      setDraftInfo(draft)
+    }
   }, [repo.id, repo.tags, repo.note])
+
+  // 編集中は 800ms debounce で localStorage に下書きを書き込む
+  useEffect(() => {
+    if (!editing) return
+    const handle = setTimeout(() => {
+      saveDraft(repo.id, { tagsInput, note, savedAt: Date.now() })
+    }, 800)
+    return () => clearTimeout(handle)
+  }, [editing, tagsInput, note, repo.id])
 
   const handleSave = () => {
     const tags = tagsInput
@@ -251,6 +339,8 @@ function RepoMetaSection({ repo }: { repo: Repository }) {
       {
         onSuccess: () => {
           setEditing(false)
+          clearDraft(repo.id)
+          setDraftInfo(null)
           toast.success('タグ・メモを保存しました')
         },
         onError: (e) => toast.error(`保存に失敗: ${(e as Error).message}`),
@@ -262,6 +352,20 @@ function RepoMetaSection({ repo }: { repo: Repository }) {
     setTagsInput(repo.tags.join(', '))
     setNote(repo.note ?? '')
     setEditing(false)
+  }
+
+  const handleRestoreDraft = () => {
+    if (!draftInfo) return
+    setTagsInput(draftInfo.tagsInput)
+    setNote(draftInfo.note)
+    setEditing(true)
+    setDraftInfo(null)
+    toast.info('未保存の下書きを復元しました')
+  }
+
+  const handleDiscardDraft = () => {
+    clearDraft(repo.id)
+    setDraftInfo(null)
   }
 
   return (
@@ -297,6 +401,30 @@ function RepoMetaSection({ repo }: { repo: Repository }) {
           </button>
         )}
       </header>
+
+      {draftInfo && !editing && (
+        <div className="mb-3 flex items-center gap-3 px-3 py-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-xs">
+          <span className="flex-1">
+            未保存の下書きがあります（
+            {new Date(draftInfo.savedAt).toLocaleString()}
+            ）
+          </span>
+          <button
+            type="button"
+            onClick={handleRestoreDraft}
+            className="text-amber-700 dark:text-amber-200 hover:underline font-medium"
+          >
+            復元
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscardDraft}
+            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          >
+            破棄
+          </button>
+        </div>
+      )}
 
       {editing ? (
         <div className="space-y-3">

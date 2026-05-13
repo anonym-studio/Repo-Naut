@@ -1,4 +1,4 @@
-**バージョン**: 1.1.0  
+**バージョン**: 1.2.0  
 **作成日**: 2026-05-13  
 **更新日**: 2026-05-13  
 **ステータス**: Draft
@@ -9,6 +9,7 @@
 |---|---|
 |1.0.0|初版作成|
 |1.1.0|リポジトリ作成機能（`gh` CLI連携）・エディタ起動機能（複数エディタ登録・プリセット）を追加|
+|1.2.0|アプリ表示名を Repo-Naut に変更（`identifier`・データディレクトリは後方互換のため従来どおり）|
 
 ---
 
@@ -35,7 +36,7 @@
 
 |項目|内容|
 |---|---|
-|アプリ名|**RepoHub**|
+|アプリ名|**Repo-Naut**|
 |目的|ローカルの複数リポジトリを格納するworkspaceディレクトリを一元管理するデスクトップアプリ|
 |ターゲット|個人開発者・フリーランスエンジニア|
 |対応OS|Windows 10+、macOS 12+|
@@ -88,7 +89,7 @@
     - リポジトリメタ: 最大200件 × 500B ≒ 100KB
     - カンバンタスク: 最大500件 × 300B ≒ 150KB
     - 設定: 〜5KB
-- **保存先**: Tauri の `app_config_dir()` 配下（`tauri.conf.json` の `identifier` = `dev.repohub.app` を使用）
+- **保存先**: Tauri の `app_config_dir()` 配下（`tauri.conf.json` の `identifier` = `dev.repohub.app` を使用 ※表示名を Repo-Naut に変更しても識別子は互換のため維持）
     - macOS: `~/Library/Application Support/dev.repohub.app/`
     - Windows: `%APPDATA%\dev.repohub.app\`
 
@@ -341,7 +342,7 @@ App
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│  [RepoHub]  [Dashboard] [Repos] [Kanban] [Archive] [⚙] │  ← トップナビゲーション
+│  [Repo-Naut]  [Dashboard] [Repos] [Kanban] [Archive] [⚙] │  ← トップナビゲーション
 ├────────────────────────────────────────────────────────┤
 │  ⚠ gh が未認証 / 未インストール時の警告バナー（任意）  │  ← GhStatusBanner
 ├────────────┬───────────────────────────────────────────┤
@@ -360,7 +361,7 @@ App
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│  RepoHub へようこそ                                    │
+│  Repo-Naut へようこそ                                    │
 │  まず Workspace を1つ登録してください。                │
 │                                                        │
 │  Workspace 名  [Personal                  ]            │
@@ -642,6 +643,11 @@ invoke('set_active_workspace', { id: string }) → void
 // リポジトリ情報取得
 invoke('get_repo_detail', { path: string }) → RepoDetail  // commits[], branches[]
 invoke('update_repo_meta', { id: string, meta: Partial<RepoMeta> }) → void
+invoke('read_readme', { path: string }) → ReadmeContent  // README.md を 5MB まで読み込み
+
+// 直近 N 日のコミット数集計（アクティブ workspace 内の全リポ。デフォルト 30 日）
+invoke('get_commit_activity', { days?: number }) → CommitActivity
+// type CommitActivity = { days: number; total: number; series: { date: 'YYYY-MM-DD'; count: number }[] }
 
 // アーカイブ（path はカード側で既知のため一緒に渡す。サーバ側の再スキャンを省略）
 invoke('archive_repo', { id: string, path: string }) → void   // ファイル移動 + meta更新
@@ -676,8 +682,14 @@ invoke('move_task', { id: string, column: Column, order: number }) → void
 
 ```typescript
 invoke('get_github_stats', { owner: string, repo: string }) → GitHubStats
-invoke('validate_pat', { pat: string }) → boolean
-invoke('save_pat', { pat: string }) → void    // OSキーチェーンへ保存
+// GitHubStats = { openPrCount: number; openIssueCount: number; fetchedAt: string }
+
+invoke('has_pat') → boolean                       // keychain に PAT が保存されているか
+invoke('validate_pat', { pat: string }) → PatValidation
+invoke('validate_stored_pat') → PatValidation     // 保存済み PAT で接続テスト
+// PatValidation = { valid: boolean; login?: string; scopes?: string; message?: string }
+invoke('save_pat', { pat: string }) → void        // OSキーチェーンへ保存
+invoke('delete_pat') → void                       // PAT を削除（存在しなくても成功）
 invoke('delete_pat') → void
 ```
 
@@ -754,7 +766,7 @@ listen('gh_auth_changed', handler: (status: GhAuthStatus) => void)
 ## 8. ディレクトリ構成
 
 ```
-repoHub/
+repo-naut/
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -850,13 +862,13 @@ repoHub/
 
 ### Phase 3: v1.1（+2週）
 
-- [ ] GitHub PAT連携（選択式）/ PR数・Issue数バッジ
-- [x] ダッシュボード（言語分布・直近アクティブTop5・アーカイブ候補。コミット数グラフは未着手）
+- [x] GitHub PAT連携（選択式）/ PR数・Issue数バッジ
+- [x] ダッシュボード（言語分布・直近アクティブTop5・アーカイブ候補・直近30日のコミット数ヒートマップ）
 - [x] グローバル検索（`Cmd/Ctrl + K`）
 
 ### Phase 4: v1.2（+1〜2週）
 
-- [ ] `git pull` / `git fetch` / ブランチ切替のUI実行
+- [x] `git pull` / `git fetch` / ブランチ切替のUI実行（成功/失敗を `GitResultModal` で表示）
 - [ ] カスタムスクリプト登録・ワンクリック実行
 - [ ] `tauri-plugin-updater` による自動アップデート
 - [ ] データのエクスポート / インポート
@@ -885,4 +897,4 @@ repoHub/
 
 ---
 
-_このドキュメントはRepoHubの実装開始前の設計書です。実装を進める中で随時更新してください。_
+_このドキュメントは Repo-Naut（旧称 RepoHub）の実装開始前の設計書です。実装を進める中で随時更新してください。_

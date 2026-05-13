@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { Column, Task } from '../../types'
 import { TaskCard } from './TaskCard'
 
@@ -17,7 +18,10 @@ interface Props {
 }
 
 export function KanbanColumn({ column, tasks, onAdd, onEditTask }: Props) {
+  // 空カラムへのドロップ用に column 自体も droppable にしておく
   const { setNodeRef, isOver } = useDroppable({ id: column })
+  const sorted = tasks.slice().sort((a, b) => a.order - b.order)
+  const taskIds = sorted.map((t) => t.id)
 
   return (
     <section
@@ -39,20 +43,19 @@ export function KanbanColumn({ column, tasks, onAdd, onEditTask }: Props) {
           +
         </button>
       </header>
-      <ul className="space-y-2 min-h-[120px]">
-        {tasks.length === 0 ? (
-          <li className="text-[11px] text-gray-400 italic py-4 text-center border border-dashed border-gray-300 dark:border-gray-600 rounded">
-            ここにドロップ
-          </li>
-        ) : (
-          tasks
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((t) => (
+      <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+        <ul className="space-y-2 min-h-[120px]">
+          {sorted.length === 0 ? (
+            <li className="text-[11px] text-gray-400 italic py-4 text-center border border-dashed border-gray-300 dark:border-gray-600 rounded">
+              ここにドロップ
+            </li>
+          ) : (
+            sorted.map((t) => (
               <TaskCard key={t.id} task={t} onEdit={() => onEditTask(t)} />
             ))
-        )}
-      </ul>
+          )}
+        </ul>
+      </SortableContext>
     </section>
   )
 }

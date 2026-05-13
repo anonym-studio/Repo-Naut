@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react'
-import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import type { Column, Task } from '../../types'
 import { useTasks, useMoveTask } from '../../hooks/useTasks'
 import { toast } from '../../store/useToast'
@@ -29,25 +36,66 @@ export function KanbanBoard() {
     return map
   }, [tasks])
 
+  /**
+   * D&D 完了時の処理:
+   *  - over がカラムID なら、カラム末尾へ移動（空カラムへのドロップを含む）
+   *  - over がタスクID なら、そのタスクの直前/直後に挿入（同一カラム内並び替えに対応）
+   *
+   * 並び順は order の中間値で表現する（前後の中点）。実装はシンプルさを優先し、衝突時のみ正規化する。
+   */
   const handleDragEnd = (e: DragEndEvent) => {
     const taskId = String(e.active.id)
     const overId = e.over?.id
     if (!overId) return
-    const newColumn = overId as Column
-    if (!columns.includes(newColumn)) return
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
-    if (task.column === newColumn) return
-    // 移動先 column 内の最大 order より +1（空 column 時は 1）
-    const maxOrder = grouped[newColumn].reduce((max, t) => Math.max(max, t.order), 0)
+
+    // 1) カラム自体へのドロップ → そのカラムの末尾に置く
+    if (columns.includes(overId as Column)) {
+      const targetColumn = overId as Column
+      if (task.column === targetColumn) return
+      const maxOrder = grouped[targetColumn].reduce((max, t) => Math.max(max, t.order), 0)
+      move.mutate(
+        { id: taskId, column: targetColumn, order: maxOrder + 1 },
+        { onError: (err) => toast.error(`移動に失敗: ${(err as Error).message}`) },
+      )
+      return
+    }
+
+    // 2) タスクへのドロップ → そのタスクが属するカラムの該当位置に挿入
+    const overTask = tasks.find((t) => t.id === String(overId))
+    if (!overTask) return
+    const targetColumn = overTask.column
+    const columnTasks = grouped[targetColumn].slice().sort((a, b) => a.order - b.order)
+    const fromIndex = columnTasks.findIndex((t) => t.id === taskId)
+    const toIndex = columnTasks.findIndex((t) => t.id === overTask.id)
+    if (toIndex < 0) return
+    if (task.column === targetColumn && fromIndex === toIndex) return
+
+    // 「挿入位置の前後の order の中間値」を新しい order とする
+    const reordered = columnTasks.filter((t) => t.id !== taskId)
+    const insertIndex = toIndex
+    const prev = reordered[insertIndex - 1]
+    const next = reordered[insertIndex]
+    let newOrder: number
+    if (!prev && !next) {
+      newOrder = 1
+    } else if (!prev) {
+      newOrder = next!.order - 1
+    } else if (!next) {
+      newOrder = prev.order + 1
+    } else {
+      newOrder = (prev.order + next.order) / 2
+    }
+
     move.mutate(
-      { id: taskId, column: newColumn, order: maxOrder + 1 },
-      { onError: (err) => toast.error(`移動に失敗: ${(err as Error).message}`) },
+      { id: taskId, column: targetColumn, order: newOrder },
+      { onError: (err) => toast.error(`並び替えに失敗: ${(err as Error).message}`) },
     )
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="flex items-center justify-between mb-3">
         {isLoading ? (
           <p className="text-sm text-gray-500">読み込み中...</p>

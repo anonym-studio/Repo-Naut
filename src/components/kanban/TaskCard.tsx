@@ -1,4 +1,5 @@
-import { useDraggable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { useNavigate } from 'react-router-dom'
 import type { Task } from '../../types'
@@ -22,10 +23,9 @@ export function TaskCard({ task, onEdit }: Props) {
   const navigate = useNavigate()
   const { repos } = useRepos()
   const linkedRepo = task.repoId ? repos.find((r) => r.id === task.repoId) : null
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
   })
-  const translate = transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined
 
   const goToRepo = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -37,8 +37,9 @@ export function TaskCard({ task, onEdit }: Props) {
     <li
       ref={setNodeRef}
       style={{
-        transform: translate,
-        opacity: isDragging ? 0.5 : 1,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
       }}
       className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2.5 text-sm space-y-1.5 cursor-grab active:cursor-grabbing"
     >
