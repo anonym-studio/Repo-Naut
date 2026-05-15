@@ -21,3 +21,6 @@ npm-debug.log*
 # Env
 .env
 .env.local
+
+# Local package manager (machine-specific; e.g. store-dir)
+.npmrc
