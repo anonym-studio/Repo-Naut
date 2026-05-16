@@ -18,7 +18,10 @@
       "Bash(pnpm landing:build *)",
       "Bash(pnpm landing:dev)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:1430/)",
-      "Skill(agent-browser)"
+      "Skill(agent-browser)",
+      "Bash(rtk git *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(git -C /Volumes/SSD/workspace/Repo-Naut show dd1c845 --name-status --format=\"\")"
     ]
   }
 }
