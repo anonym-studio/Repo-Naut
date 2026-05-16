@@ -106,7 +106,7 @@ pnpm landing:type-check   # LP の TypeScript 型チェック
 
 `pnpm tauri dev`（:1420）と `pnpm landing:dev`（:1430）は **同時起動可能**。
 
-Cloudflare Pages では **Root directory = `landing`**、**Build output = `dist`** で接続する。詳細は [`spec/ランディングページ — 仕様・設計書.md`](spec/ランディングページ%20—%20仕様・設計書.md) を参照。
+Cloudflare **Pages**（`*.pages.dev`）で **Root directory = `landing`**、**Build output = `dist`** で接続する（**Workers / `*.workers.dev` ではない**）。手順は [`docs/cloudflare-pages-deploy.md`](docs/cloudflare-pages-deploy.md) と [`spec/ランディングページ — 仕様・設計書.md`](spec/ランディングページ%20—%20仕様・設計書.md) を参照。
 
 ### コミット前の検証
 
