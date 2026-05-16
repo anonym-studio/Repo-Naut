@@ -205,7 +205,7 @@ src-tauri/src/store.rs         (JSON 読み書き、atomic write)
 ```
 landing/                  # 公開用 LP（repo-naut-landing / Cloudflare Pages）
 ├── src/                  # LP の React コンポーネント（デスクトップ src/ とは別）
-├── public/               # 静的ファイル（_redirects 等）
+├── public/               # 静的ファイル（画像・アイコン等）
 └── dist/                 # pnpm landing:build の出力（git 管理外）
 
 src-tauri/src/
