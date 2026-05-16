@@ -12,7 +12,11 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "landing:dev": "pnpm --filter repo-naut-landing dev",
+    "landing:build": "pnpm --filter repo-naut-landing build",
+    "landing:preview": "pnpm --filter repo-naut-landing preview",
+    "landing:type-check": "pnpm --filter repo-naut-landing type-check"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

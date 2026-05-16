@@ -1,3 +1,4 @@
+use crate::command_path;
 use crate::models::{GitCommandResult, ScriptConfig};
 use crate::store;
 use serde::Deserialize;
@@ -126,6 +127,7 @@ pub async fn run_script(
         .collect();
     let has_placeholder = script.command.contains("{path}");
 
+    let program = command_path::resolve_executable(&program);
     let mut cmd = std::process::Command::new(&program);
     cmd.args(&args);
     if !has_placeholder {

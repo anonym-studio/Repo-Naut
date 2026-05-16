@@ -1,3 +1,4 @@
+use crate::command_path;
 use crate::models::{EditorConfig, Settings, TerminalPreset};
 use crate::store;
 use tauri::AppHandle;
@@ -38,11 +39,12 @@ pub async fn open_in_editor(
         .find(|e| e.id == id)
         .ok_or("editor not found")?;
 
-    std::process::Command::new(&editor.command)
+    let program = command_path::resolve_executable(&editor.command);
+    std::process::Command::new(&program)
         .args(&editor.args)
         .arg(&path)
         .spawn()
-        .map_err(|e| format!("failed to launch {}: {}", editor.command, e))?;
+        .map_err(|e| format!("failed to launch {}: {}", program, e))?;
     Ok(())
 }
 
@@ -204,7 +206,8 @@ fn run_custom_command(command: &str, path: &str) -> Result<(), String> {
         .collect();
     let has_placeholder = command.contains("{path}");
 
-    let mut cmd = std::process::Command::new(program);
+    let program = command_path::resolve_executable(program);
+    let mut cmd = std::process::Command::new(&program);
     cmd.args(&args);
     if !has_placeholder {
         cmd.current_dir(path);

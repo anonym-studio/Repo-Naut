@@ -11,7 +11,14 @@
       "Bash(pnpm type-check *)",
       "Bash(pnpm lint *)",
       "Bash(python3 *)",
-      "Bash(pnpm tauri *)"
+      "Bash(pnpm tauri *)",
+      "Bash(rtk read *)",
+      "Bash(rtk ls *)",
+      "Bash(pnpm landing:type-check *)",
+      "Bash(pnpm landing:build *)",
+      "Bash(pnpm landing:dev)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:1430/)",
+      "Skill(agent-browser)"
     ]
   }
 }

@@ -43,7 +43,19 @@
 | **ネイティブ連携** | `@tauri-apps/plugin-dialog`（ダイアログ / ファイル選択 / バックアップ JSON の save/open） |
 | **バックエンド** | Rust（`git2` / `notify` / `rayon` / `serde` / `tokio` / `keyring` / `reqwest` / `uuid` / `chrono` / `walkdir`） |
 | **データ永続化** | JSON ファイル 3 本（settings / repos-meta / kanban）、PAT は OS Keychain（`keyring` クレート） |
-| **パッケージマネージャー** | **pnpm**（npm は使わない） |
+| **パッケージマネージャー** | **pnpm** workspace（npm は使わない） |
+| **公開用 LP** | `landing/` — Vite + React + Tailwind v4（[Cloudflare Pages](https://pages.cloudflare.com/) 向け） |
+
+### リポジトリ構成（pnpm workspace）
+
+ルートの `pnpm-workspace.yaml` で **2 パッケージ**を管理する。依存のインストールはリポジトリルートで `pnpm install` するだけで両方に反映される。
+
+| パッケージ名 | パス | 役割 | ビルド出力 |
+|---|---|---|---|
+| `repo-naut` | `.`（ルート） | Tauri デスクトップアプリ | `dist/` → Tauri `frontendDist` |
+| `repo-naut-landing` | `landing/` | 公開用ランディングページ | `landing/dist/` → Cloudflare Pages |
+
+デスクトップ用の `pnpm build` と LP 用の `pnpm landing:build` は **別ディレクトリに出力**するため、互いに上書きしない。
 
 ---
 
@@ -62,28 +74,83 @@
 ### インストール & 起動
 
 ```bash
-pnpm install
-pnpm tauri dev   # 開発サーバー（HMR 有効、初回ビルドは 5〜10 分）
+pnpm install          # workspace 全体（デスクトップ + landing）
+pnpm tauri dev        # デスクトップ開発（HMR、初回ビルドは 5〜10 分）
 ```
 
-### よく使うコマンド
+### よく使うコマンド（デスクトップアプリ）
 
 ```bash
-pnpm tauri dev      # 開発起動
+pnpm tauri dev      # 開発起動（フロント :1420）
 pnpm tauri build    # 本番ビルド（インストーラー生成）
 pnpm dev            # フロントエンドのみ（Tauri なし）
-pnpm type-check     # TypeScript 型チェック
+pnpm type-check     # TypeScript 型チェック（ルート `src/`）
 pnpm lint           # ESLint
 
 cargo check --manifest-path src-tauri/Cargo.toml         # Rust 型チェック（高速）
 cargo test  --manifest-path src-tauri/Cargo.toml         # Rust テスト
 ```
 
+### ランディングページ（`landing/`）
+
+公開用 LP はデスクトップアプリと **コード・ビルドを分離**している（Tauri API は使わない）。
+
+```bash
+pnpm landing:dev          # LP 開発サーバー http://localhost:1430
+pnpm landing:build        # 本番ビルド → landing/dist/
+pnpm landing:preview      # ビルド成果物のローカル確認
+pnpm landing:type-check   # LP の TypeScript 型チェック
+```
+
+`pnpm tauri dev`（:1420）と `pnpm landing:dev`（:1430）は **同時起動可能**。
+
+Cloudflare Pages では **Root directory = `landing`**、**Build output = `dist`** で接続する。詳細は [`spec/ランディングページ — 仕様・方針.md`](spec/ランディングページ%20—%20仕様・方針.md) を参照。
+
 ### コミット前の検証
+
+**デスクトップのみ変更した場合:**
 
 ```bash
 pnpm type-check && pnpm lint && cargo check --manifest-path src-tauri/Cargo.toml
 ```
+
+**LP のみ変更した場合:**
+
+```bash
+pnpm landing:type-check && pnpm landing:build
+```
+
+**両方変更した場合:** 上記をそれぞれ実行する。
+
+---
+
+## 本番ビルド
+
+**現在のリリース対象: macOS のみ**（Windows は今後対応予定）。  
+Apple Developer Program 未加入のため、配布バイナリは**未署名**となる。
+
+### macOS（リリース対象）
+
+追加で必要なもの: Xcode Command Line Tools
+
+```bash
+xcode-select --install   # 初回のみ
+
+# ネイティブ（実行している Mac のアーキテクチャ向け）
+pnpm tauri build
+
+# ユニバーサルバイナリ（Intel + Apple Silicon 両対応・配布時推奨）
+rustup target add x86_64-apple-darwin aarch64-apple-darwin   # 初回のみ
+pnpm tauri build --target universal-apple-darwin
+```
+
+出力先: `src-tauri/target/[universal-apple-darwin/]release/bundle/dmg/`
+
+> **未署名アプリの初回起動**: ダウンロードしたユーザーは Gatekeeper の警告が表示される。Finder で右クリック →「開く」→ダイアログの「開く」をクリックすることで起動できる（2回目以降は通常通り）。詳細は [`docs/build-guide.md`](docs/build-guide.md) を参照。
+
+### Windows（今後対応予定）
+
+現バージョンでは Windows リリースは行わない。ビルド手順・必要ツールは [`docs/build-guide.md`](docs/build-guide.md) 参照。
 
 ---
 
@@ -134,6 +201,11 @@ src-tauri/src/store.rs         (JSON 読み書き、atomic write)
 ### ディレクトリ構成（要約）
 
 ```
+landing/                  # 公開用 LP（repo-naut-landing / Cloudflare Pages）
+├── src/                  # LP の React コンポーネント（デスクトップ src/ とは別）
+├── public/               # 静的ファイル（_redirects 等）
+└── dist/                 # pnpm landing:build の出力（git 管理外）
+
 src-tauri/src/
 ├── lib.rs              # Tauri ビルダー / generate_handler! 登録 / watcher 起動
 ├── models.rs           # 全 Rust 型定義（Settings に workspaceRepoOrder / scripts を含む）
@@ -177,7 +249,9 @@ src/
 | ファイル | 内容 |
 |---|---|
 | [`spec/RepoHub — 仕様・設計書.md`](spec/RepoHub%20—%20仕様・設計書.md) | 機能要件 / データモデル / Tauri コマンド仕様 |
+| [`spec/ランディングページ — 仕様・方針.md`](spec/ランディングページ%20—%20仕様・方針.md) | LP の構成・デプロイ方針 / Cloudflare Pages 設定 |
 | [`docs/development-setup.md`](docs/development-setup.md) | 初期セットアップ手順 / Rust インストール / よくあるエラー |
+| [`docs/build-guide.md`](docs/build-guide.md) | OS 別本番ビルド手順 / コード署名 / トラブルシューティング |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 日々のワークフロー / コードパターン集 / デバッグ方法 |
 | [`docs/tasks.md`](docs/tasks.md) | 残タスクリスト（随時更新） |
 | [`AGENTS.md`](AGENTS.md) | AI エージェント向けの作業ガイド |
@@ -222,4 +296,4 @@ src/
 - [ ] Rust 型と TypeScript 型を両方更新したか
 - [ ] JSON 書き込みで `write_atomic()` を使っているか
 - [ ] PAT を JSON に書いていないか（必ず `keyring` 経由）
-- [ ] `pnpm type-check && pnpm lint && cargo check` がすべて通っているか
+- [ ] `pnpm type-check && pnpm lint && cargo check` がすべて通っているか（LP のみ変更時は `pnpm landing:type-check && pnpm landing:build`）

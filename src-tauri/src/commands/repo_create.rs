@@ -1,3 +1,4 @@
+use crate::command_path;
 use crate::models::{CreateRepoResult, GhAuthStatus};
 use crate::store;
 use std::process::Command;
@@ -7,10 +8,10 @@ use tauri::{AppHandle, Emitter};
 #[tauri::command]
 pub async fn check_gh_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     let settings = store::load_settings(&app)?;
-    let gh_cmd = settings.gh.path.as_deref().unwrap_or("gh");
+    let gh_cmd = command_path::resolve_gh_command(settings.gh.path.as_deref());
 
     // ghバイナリの存在確認
-    let installed = Command::new(gh_cmd).arg("--version").output().is_ok();
+    let installed = Command::new(&gh_cmd).arg("--version").output().is_ok();
     if !installed {
         return Ok(GhAuthStatus {
             installed: false,
@@ -19,7 +20,7 @@ pub async fn check_gh_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
         });
     }
 
-    let output = Command::new(gh_cmd)
+    let output = Command::new(&gh_cmd)
         .args(["auth", "status", "--hostname", "github.com"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -56,7 +57,7 @@ pub async fn create_repo(
     with_readme: bool,
 ) -> Result<CreateRepoResult, String> {
     let settings = store::load_settings(&app)?;
-    let gh_cmd = settings.gh.path.as_deref().unwrap_or("gh");
+    let gh_cmd = command_path::resolve_gh_command(settings.gh.path.as_deref());
 
     let workspace = settings
         .workspaces
@@ -76,7 +77,7 @@ pub async fn create_repo(
     }
 
     // 進捗をストリーミング送信するためspawn（簡易版: 完了後に一括送信）
-    let output = Command::new(gh_cmd)
+    let output = Command::new(&gh_cmd)
         .current_dir(&workspace.path)
         .args(&args)
         .output()
