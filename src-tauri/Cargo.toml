@@ -2,7 +2,8 @@
 name = "repohub"
 version = "0.1.0"
 description = "A desktop app for managing multiple local Git repositories"
-authors = ["Masataka Koguchi"]
+authors = ["anonym-studio"]
+license = "MIT"
 edition = "2021"
 
 [lib]

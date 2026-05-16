@@ -2,6 +2,7 @@
   "name": "repo-naut",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.0.0",
   "scripts": {

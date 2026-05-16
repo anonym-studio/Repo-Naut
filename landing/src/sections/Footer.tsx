@@ -1,4 +1,4 @@
-import { GITHUB_REPO_URL } from '../constants'
+import { GITHUB_REPO_URL, RELEASES_URL } from '../constants'
 
 export function Footer() {
   return (
@@ -18,12 +18,17 @@ export function Footer() {
           >
             GitHub
           </a>
-          <a href="#download" className="transition-colors hover:text-[#F8FAFC]">
+          <a
+            href={RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-colors hover:text-[#F8FAFC]"
+          >
             ダウンロード
           </a>
         </div>
 
-        <p className="text-xs text-[#94A3B8]">© 2026 Masataka Koguchi</p>
+        <p className="text-xs text-[#94A3B8]">© 2026 anonym-studio</p>
       </div>
     </footer>
   )

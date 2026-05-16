@@ -1,6 +1,61 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { GITHUB_REPO_URL, RELEASES_LATEST_URL } from '../constants'
 
+const SCREENS = [
+  '/screen-1.png',
+  '/screen-2.png',
+  '/screen-3.png',
+  '/screen-4.png',
+  '/screen-5.png',
+  '/screen-6.png',
+]
+
+const DRAG_THRESHOLD = 50
+
 export function Hero() {
+  const [current, setCurrent] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartX = useRef<number | null>(null)
+
+  const next = useCallback(() => setCurrent(i => (i + 1) % SCREENS.length), [])
+  const prev = useCallback(() => setCurrent(i => (i - 1 + SCREENS.length) % SCREENS.length), [])
+
+  useEffect(() => {
+    if (paused) return
+    const timer = setInterval(next, 4000)
+    return () => clearInterval(timer)
+  }, [next, paused])
+
+  const onDragStart = (clientX: number) => {
+    dragStartX.current = clientX
+    setIsDragging(true)
+    setPaused(true)
+  }
+
+  const onDragMove = (clientX: number) => {
+    if (dragStartX.current === null) return
+    setDragOffset(clientX - dragStartX.current)
+  }
+
+  const onDragEnd = () => {
+    if (dragStartX.current === null) return
+    if (dragOffset < -DRAG_THRESHOLD) next()
+    else if (dragOffset > DRAG_THRESHOLD) prev()
+    dragStartX.current = null
+    setDragOffset(0)
+    setIsDragging(false)
+    setPaused(false)
+  }
+
+  const onDragCancel = () => {
+    dragStartX.current = null
+    setDragOffset(0)
+    setIsDragging(false)
+    setPaused(false)
+  }
+
   return (
     <section className="relative flex flex-col items-center justify-center px-6 pt-28 pb-20 overflow-hidden text-center">
       {/* Background glow */}
@@ -82,14 +137,73 @@ export function Hero() {
         。
       </p>
 
-      {/* Screenshot */}
+      {/* Screenshot carousel */}
       <div className="w-full max-w-5xl">
         <div className="relative rounded-xl border border-[#1E2330] bg-[#0F1117] p-1 shadow-[0_0_80px_rgba(59,130,246,0.08)]">
-          <img
-            src="/screenshot.png"
-            alt="Repo-Naut アプリのスクリーンショット"
-            className="w-full rounded-lg"
-          />
+          {/* Slides */}
+          <div
+            className={`overflow-hidden rounded-lg select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+            onMouseDown={e => onDragStart(e.clientX)}
+            onMouseMove={e => onDragMove(e.clientX)}
+            onMouseUp={onDragEnd}
+            onMouseLeave={onDragCancel}
+            onTouchStart={e => onDragStart(e.touches[0].clientX)}
+            onTouchMove={e => onDragMove(e.touches[0].clientX)}
+            onTouchEnd={onDragEnd}
+          >
+            <div
+              className={`flex ${isDragging ? '' : 'transition-transform duration-500 ease-in-out'}`}
+              style={{ transform: `translateX(calc(-${current * 100}% + ${dragOffset}px))` }}
+            >
+              {SCREENS.map((src, i) => (
+                <img
+                  key={src}
+                  src={src}
+                  alt={`Repo-Naut スクリーンショット ${i + 1}`}
+                  className="w-full shrink-0 rounded-lg"
+                  draggable={false}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Prev button */}
+          <button
+            onClick={prev}
+            aria-label="前のスクリーンショット"
+            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-[#05070A]/70 text-[#94A3B8] backdrop-blur-sm transition-colors hover:bg-[#1E2330] hover:text-[#F8FAFC]"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+
+          {/* Next button */}
+          <button
+            onClick={next}
+            aria-label="次のスクリーンショット"
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-[#05070A]/70 text-[#94A3B8] backdrop-blur-sm transition-colors hover:bg-[#1E2330] hover:text-[#F8FAFC]"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Dot indicators */}
+        <div className="mt-4 flex justify-center gap-2">
+          {SCREENS.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrent(i)}
+              aria-label={`スクリーンショット ${i + 1} を表示`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === current
+                  ? 'w-6 bg-[#3B82F6]'
+                  : 'w-1.5 bg-[#1E2330] hover:bg-[#94A3B8]'
+              }`}
+            />
+          ))}
         </div>
       </div>
     </section>

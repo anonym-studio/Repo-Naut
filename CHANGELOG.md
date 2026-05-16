@@ -59,5 +59,5 @@ Initial MVP release.
 - ランディングページ（Cloudflare Pages 向け、`landing/` ディレクトリ）
 - バックアップコマンド (`src-tauri/src/commands/backup.rs`)
 
-[Unreleased]: https://github.com/mkoguchi/repo-naut/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/mkoguchi/repo-naut/releases/tag/v0.1.0
+[Unreleased]: https://github.com/anonym-studio/Repo-Naut/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anonym-studio/Repo-Naut/releases/tag/v0.1.0

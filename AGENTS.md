@@ -18,13 +18,16 @@
 ## 変更後に必ず実行する検証コマンド
 
 ```bash
-# TypeScriptの変更後
+# デスクトップ TypeScript の変更後
 pnpm type-check
 
-# Rustの変更後
+# Rust の変更後
 cargo check --manifest-path src-tauri/Cargo.toml
 
-# コミット前（両方）
+# LP（landing/）の変更後
+pnpm landing:type-check && pnpm landing:build
+
+# コミット前（デスクトップ）
 pnpm type-check && cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
@@ -201,4 +204,4 @@ pub struct MyType {
 - `spec/RepoHub — 仕様・設計書.md` — 全機能要件・型定義・コマンド仕様
 - `docs/development-workflow.md` — コードパターン集・デバッグ方法
 - `docs/development-setup.md` — 環境構築手順
-- `CLAUDE.md` — アーキテクチャ詳細・ディレクトリ構成
+- `README.md` — アーキテクチャ概要・ディレクトリ構成

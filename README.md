@@ -1,4 +1,6 @@
-# Repo-Naut
+<p align="center">
+  <img src="assets/title.png" alt="Repo-Naut" width="480" />
+</p>
 
 ローカルにある複数の Git リポジトリを一元管理するデスクトップアプリ。
 
@@ -104,7 +106,7 @@ pnpm landing:type-check   # LP の TypeScript 型チェック
 
 `pnpm tauri dev`（:1420）と `pnpm landing:dev`（:1430）は **同時起動可能**。
 
-Cloudflare Pages では **Root directory = `landing`**、**Build output = `dist`** で接続する。詳細は [`spec/ランディングページ — 仕様・方針.md`](spec/ランディングページ%20—%20仕様・方針.md) を参照。
+Cloudflare Pages では **Root directory = `landing`**、**Build output = `dist`** で接続する。詳細は [`spec/ランディングページ — 仕様・設計書.md`](spec/ランディングページ%20—%20仕様・設計書.md) を参照。
 
 ### コミット前の検証
 
@@ -196,7 +198,7 @@ src-tauri/src/store.rs         (JSON 読み書き、atomic write)
 - Rust 型（`models.rs`）と TypeScript 型（`src/types/index.ts`）は常に同期
 - Rust 側の全 struct に `#[serde(rename_all = "camelCase")]`、`Option` フィールドには `#[serde(skip_serializing_if = "Option::is_none")]`
 
-詳細は [`AGENTS.md`](AGENTS.md) と [`CLAUDE.md`](CLAUDE.md) を参照。
+詳細は [`AGENTS.md`](AGENTS.md) を参照。
 
 ### ディレクトリ構成（要約）
 
@@ -249,7 +251,7 @@ src/
 | ファイル | 内容 |
 |---|---|
 | [`spec/RepoHub — 仕様・設計書.md`](spec/RepoHub%20—%20仕様・設計書.md) | 機能要件 / データモデル / Tauri コマンド仕様 |
-| [`spec/ランディングページ — 仕様・方針.md`](spec/ランディングページ%20—%20仕様・方針.md) | LP の構成・デプロイ方針 / Cloudflare Pages 設定 |
+| [`spec/ランディングページ — 仕様・設計書.md`](spec/ランディングページ%20—%20仕様・設計書.md) | LP の構成・デプロイ方針 / Cloudflare Pages 設定 |
 | [`docs/development-setup.md`](docs/development-setup.md) | 初期セットアップ手順 / Rust インストール / よくあるエラー |
 | [`docs/build-guide.md`](docs/build-guide.md) | OS 別本番ビルド手順 / コード署名 / トラブルシューティング |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 日々のワークフロー / コードパターン集 / デバッグ方法 |
@@ -276,7 +278,7 @@ src/
 
 ## ライセンス
 
-未定（プライベートプロジェクト）。
+[MIT](LICENSE) © 2026 anonym-studio
 
 ---
 

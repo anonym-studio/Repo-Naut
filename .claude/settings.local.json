@@ -21,7 +21,12 @@
       "Skill(agent-browser)",
       "Bash(rtk git *)",
       "Bash(grep -v \"^$\")",
-      "Bash(git -C /Volumes/SSD/workspace/Repo-Naut show dd1c845 --name-status --format=\"\")"
+      "Bash(git -C /Volumes/SSD/workspace/Repo-Naut show dd1c845 --name-status --format=\"\")",
+      "Bash(rtk grep *)",
+      "Bash(identify /Volumes/SSD/workspace/Repo-Naut/assets/screen-1.png)",
+      "Bash(agent-browser batch *)",
+      "Bash(agent-browser scroll *)",
+      "Bash(agent-browser screenshot *)"
     ]
   }
 }
