@@ -6,7 +6,10 @@
 
 [Tauri v2](https://tauri.app/) + React 18 + TypeScript + Rust で実装。個人開発者・フリーランスエンジニアが、workspace ディレクトリ配下に散らばるプロジェクトを「カード一覧 → 即起動 → タスク管理 → アーカイブ」までシームレスに扱えることを目指す。
 
-> **Status**: Phase 1〜4 をほぼ実装済み（`tauri-plugin-updater` のみ未着手）。残タスクは [`docs/tasks.md`](docs/tasks.md) 参照。
+**[v0.1.0 リリース済み](https://github.com/anonym-studio/Repo-Naut/releases/tag/v0.1.0)** — macOS ユニバーサル `.dmg` を配布中。  
+ランディングページ: https://repo-naut.pages.dev/
+
+次フェーズのタスクは [`docs/post-mvp-roadmap.md`](docs/post-mvp-roadmap.md) 参照。
 
 ---
 
@@ -46,7 +49,7 @@
 | **バックエンド** | Rust（`git2` / `notify` / `rayon` / `serde` / `tokio` / `keyring` / `reqwest` / `uuid` / `chrono` / `walkdir`） |
 | **データ永続化** | JSON ファイル 3 本（settings / repos-meta / kanban）、PAT は OS Keychain（`keyring` クレート） |
 | **パッケージマネージャー** | **pnpm** workspace（npm は使わない） |
-| **公開用 LP** | `landing/` — Vite + React + Tailwind v4（[Cloudflare Pages](https://pages.cloudflare.com/) 向け） |
+| **公開用 LP** | `landing/` — Vite + React + Tailwind v4（[https://repo-naut.pages.dev/](https://repo-naut.pages.dev/)） |
 
 ### リポジトリ構成（pnpm workspace）
 
@@ -257,7 +260,7 @@ src/
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 日々のワークフロー / コードパターン集 / デバッグ方法 |
 | [`docs/tasks.md`](docs/tasks.md) | 残タスクリスト（随時更新） |
 | [`AGENTS.md`](AGENTS.md) | AI エージェント向けの作業ガイド |
-| [`CLAUDE.md`](CLAUDE.md) | Claude Code 向けのアーキテクチャ詳細 |
+| [`docs/cloudflare-pages-deploy.md`](docs/cloudflare-pages-deploy.md) | LP の Cloudflare Pages デプロイ手順 |
 
 ---
 

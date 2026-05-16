@@ -26,7 +26,12 @@
       "Bash(identify /Volumes/SSD/workspace/Repo-Naut/assets/screen-1.png)",
       "Bash(agent-browser batch *)",
       "Bash(agent-browser scroll *)",
-      "Bash(agent-browser screenshot *)"
+      "Bash(agent-browser screenshot *)",
+      "Bash(git -C /Volumes/SSD/workspace/Repo-Naut tag)",
+      "Bash(grep -v \"\\\\.lock$\")",
+      "Bash(grep -E \"\\\\.\\(env|pem|p12|pfx|key|credential|secret|token\\)$\")",
+      "Bash(grep -E \"wrangler\\\\.\\(toml|jsonc|json\\)$\")",
+      "Bash(xargs grep -lE \"[a-f0-9]{32,}\")"
     ]
   }
 }

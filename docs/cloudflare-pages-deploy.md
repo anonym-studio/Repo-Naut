@@ -23,7 +23,7 @@
 5. 環境変数（推奨）: `NODE_VERSION` = `20`、`PNPM_VERSION` = `10`
 6. **Save and Deploy**
 
-本番 URL の例: `https://<プロジェクト名>.pages.dev`
+本番 URL: **https://repo-naut.pages.dev/**
 
 ---
 
