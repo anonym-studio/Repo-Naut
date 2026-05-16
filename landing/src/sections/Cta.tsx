@@ -1,5 +1,4 @@
-const GITHUB_URL = 'https://github.com/mkoguchi/repo-naut'
-const DOWNLOAD_URL = '#' // TODO: GitHub Releases URL が確定したら更新
+import { GITHUB_REPO_URL, RELEASES_LATEST_URL } from '../constants'
 
 const steps = [
   '.dmg ファイルをダブルクリックしてマウント',
@@ -22,7 +21,9 @@ export function Cta() {
 
       {/* CTA button */}
       <a
-        href={DOWNLOAD_URL}
+        href={RELEASES_LATEST_URL}
+        target="_blank"
+        rel="noopener noreferrer"
         className="mb-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] px-8 py-4 text-base font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -45,7 +46,7 @@ export function Cta() {
       {/* GitHub star */}
       <div className="mb-12">
         <a
-          href={GITHUB_URL}
+          href={GITHUB_REPO_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 text-sm text-[#94A3B8] transition-colors hover:text-[#F8FAFC]"

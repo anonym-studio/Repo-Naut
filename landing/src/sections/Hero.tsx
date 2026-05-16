@@ -1,5 +1,4 @@
-const GITHUB_URL = 'https://github.com/mkoguchi/repo-naut'
-const DOWNLOAD_URL = '#' // TODO: GitHub Releases URL が確定したら更新
+import { GITHUB_REPO_URL, RELEASES_LATEST_URL } from '../constants'
 
 export function Hero() {
   return (
@@ -36,7 +35,9 @@ export function Hero() {
       {/* CTA buttons */}
       <div className="mb-5 flex flex-col items-center gap-3 sm:flex-row">
         <a
-          href={DOWNLOAD_URL}
+          href={RELEASES_LATEST_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] px-6 py-3 text-sm font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -47,7 +48,7 @@ export function Hero() {
           macOS 用をダウンロード (.dmg)
         </a>
         <a
-          href={GITHUB_URL}
+          href={GITHUB_REPO_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-lg border border-[#1E2330] px-6 py-3 text-sm font-medium text-[#94A3B8] transition-colors hover:border-[#3B82F6] hover:text-[#F8FAFC]"

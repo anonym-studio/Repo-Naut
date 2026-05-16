@@ -1,4 +1,4 @@
-const GITHUB_URL = 'https://github.com/mkoguchi/repo-naut'
+import { GITHUB_REPO_URL } from '../constants'
 
 export function Footer() {
   return (
@@ -11,7 +11,7 @@ export function Footer() {
 
         <div className="flex items-center gap-6 text-sm text-[#94A3B8]">
           <a
-            href={GITHUB_URL}
+            href={GITHUB_REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors hover:text-[#F8FAFC]"

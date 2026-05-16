@@ -4,9 +4,7 @@ import { Features } from './sections/Features'
 import { Technology } from './sections/Technology'
 import { Cta } from './sections/Cta'
 import { Footer } from './sections/Footer'
-
-const DOWNLOAD_URL = '#' // TODO: GitHub Releases URL が確定したら更新
-const GITHUB_URL = 'https://github.com/mkoguchi/repo-naut'
+import { GITHUB_REPO_URL, RELEASES_LATEST_URL } from './constants'
 
 export function App() {
   return (
@@ -22,7 +20,7 @@ export function App() {
             <a href="#features" className="transition-colors hover:text-[#F8FAFC]">機能</a>
             <a href="#technology" className="transition-colors hover:text-[#F8FAFC]">Technology</a>
             <a
-              href={GITHUB_URL}
+              href={GITHUB_REPO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-[#F8FAFC]"
@@ -31,7 +29,9 @@ export function App() {
             </a>
           </nav>
           <a
-            href={DOWNLOAD_URL}
+            href={RELEASES_LATEST_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-lg bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] px-4 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             ダウンロード

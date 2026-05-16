@@ -1,0 +1,65 @@
+# macOS ユニバーサル .dmg をビルドし GitHub Releases に公開する。
+# トリガー: v* タグの push（例: v0.1.0）または手動実行
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (tauri.conf.json の version と一致させる。例: v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+jobs:
+  release-macos:
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          releaseName: Repo-Naut ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          releaseBody: |
+            macOS 12 以降向け（Apple Silicon / Intel ユニバーサル）
+
+            ### ダウンロード
+            `Repo-Naut_*_universal.dmg` をダウンロードし、`Repo-Naut.app` を `/Applications` にコピーしてください。
+
+            ### 初回起動について（未署名）
+            Apple Developer Program 未加入のため未署名です。Gatekeeper の警告が出た場合は **右クリック →「開く」→「開く」** で起動してください（2 回目以降は通常起動）。
+
+            詳細: [ビルドガイド](https://github.com/anonym-studio/Repo-Naut/blob/main/docs/build-guide.md#未署名アプリの初回起動方法ユーザー向け)
+          generateReleaseNotes: true
+          prerelease: false
+          releaseDraft: false
+          args: --target universal-apple-darwin

@@ -12,6 +12,8 @@ macOS 向けバイナリは macOS 上で、Windows 向けバイナリは Windows
 | 対象 OS | **macOS のみ**（Windows リリースは今後対応予定） |
 | コード署名 | **未署名**（Apple Developer Program 未加入のため） |
 | 配布形式 | `.dmg`（GitHub Releases へのアップロード） |
+| リポジトリ | https://github.com/anonym-studio/Repo-Naut |
+| CI リリース | `.github/workflows/release.yml`（`v*` タグ push で自動ビルド） |
 
 > **未署名リリースについて**: Apple Developer Program（$99/年）未加入のため、配布する `.dmg` / `.app` はコード署名・公証なしの未署名となる。ダウンロードしたユーザーは初回起動時に Gatekeeper の警告が表示されるため、[後述の手順](#未署名アプリの初回起動方法ユーザー向け)で開く必要がある。
 
@@ -86,6 +88,33 @@ pnpm tauri build --target universal-apple-darwin
 ```
 
 出力先: `src-tauri/target/universal-apple-darwin/release/bundle/`
+
+> **クロスコンパイル（Apple Silicon → Intel）**: `git2` は `vendored-openssl`、`reqwest` は `rustls-tls` を使用しており、システム OpenSSL なしで `universal-apple-darwin` をビルドできる。
+
+### GitHub Releases（CI）
+
+GitHub Actions（`Release` ワークフロー）が macOS ランナー上でユニバーサル `.dmg` をビルドし、[Releases](https://github.com/anonym-studio/Repo-Naut/releases) にアップロードする。
+
+**初回のみ**: リポジトリの **Settings → Actions → General → Workflow permissions** で **Read and write permissions** を有効にする（`GITHUB_TOKEN` で Release 作成に必要）。
+
+#### タグ push でリリース（推奨）
+
+1. `package.json` と `src-tauri/tauri.conf.json` の `version` を揃える（例: `0.1.0`）
+2. 変更をコミットし、タグを作成して push する
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+3. Actions タブで `Release` ワークフローの完了を確認する
+4. Releases ページに `Repo-Naut_0.1.0_universal.dmg` が添付される
+
+タグ名は **`v` + セマンティックバージョン**（`v0.1.0`）とし、`tauri.conf.json` の `version` と一致させる。
+
+#### 手動実行
+
+GitHub の **Actions → Release → Run workflow** から実行できる。入力の `tag` は上記と同じ形式（例: `v0.1.0`）。
 
 ### コード署名について（現状）
 
