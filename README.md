@@ -259,6 +259,7 @@ src/
 | [`docs/build-guide.md`](docs/build-guide.md) | OS 別本番ビルド手順 / コード署名 / トラブルシューティング |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 日々のワークフロー / コードパターン集 / デバッグ方法 |
 | [`docs/tasks.md`](docs/tasks.md) | 残タスクリスト（随時更新） |
+| [`docs/improvement-considerations.md`](docs/improvement-considerations.md) | 改善検討メモ（未実装・調査結果の継続追記） |
 | [`AGENTS.md`](AGENTS.md) | AI エージェント向けの作業ガイド |
 | [`docs/cloudflare-pages-deploy.md`](docs/cloudflare-pages-deploy.md) | LP の Cloudflare Pages デプロイ手順 |
 

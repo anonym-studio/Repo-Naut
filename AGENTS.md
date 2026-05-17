@@ -49,6 +49,16 @@ pnpm type-check && cargo check --manifest-path src-tauri/Cargo.toml
 
 ---
 
+## 改善検討ドキュメント（継続追記）
+
+未実装の改善・調査結果は **`docs/improvement-considerations.md`** に蓄積する。
+
+- バグ調査・UX・パフォーマンス・プラットフォーム制約などで **即実装しないが将来検討したい** 内容が出たら、作業の最後に **積極的に 1 トピック追記** する（既存トピックの更新でも可）。
+- 書式は同ファイル先頭の「運用ルール」「トピックの書き方」に従う。実装完了時はステータスを `implemented` にし、PR 等へのリンクを残す。
+- 確定した仕様は `spec/` へ、実行タスクは `docs/tasks.md` へ移す（本ファイルは検討メモ用）。
+
+---
+
 ## 機能追加の手順
 
 ### パターンA: フロントエンドのみ
@@ -202,6 +212,7 @@ pub struct MyType {
 ## 詳細ドキュメント
 
 - `spec/RepoHub — 仕様・設計書.md` — 全機能要件・型定義・コマンド仕様
+- `docs/improvement-considerations.md` — 改善検討メモ（未実装・調査結果の継続追記）
 - `docs/development-workflow.md` — コードパターン集・デバッグ方法
 - `docs/development-setup.md` — 環境構築手順
 - `README.md` — アーキテクチャ概要・ディレクトリ構成

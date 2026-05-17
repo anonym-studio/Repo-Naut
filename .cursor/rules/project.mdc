@@ -58,3 +58,8 @@ alwaysApply: true
 - `settings.json` — workspaces, editors, gh/terminal設定, theme
 - `repos-meta.json` — タグ・メモ・アーカイブ状態（キー = パスのSHA256先頭16文字）
 - `kanban.json` — カンバンタスク全件
+
+## 改善検討ドキュメント
+- 未実装の改善案・調査結果は `docs/improvement-considerations.md` に追記する（形式は同ファイル先頭の運用ルール参照）
+- バグ調査・UX・パフォーマンス・OS 制約などで即実装しないが将来検討したい内容が出たら、作業の最後に **積極的に 1 トピック追記**（既存トピックのステータス更新でも可）
+- 確定仕様は `spec/`、実行タスクは `docs/tasks.md` へ移す
